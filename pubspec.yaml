@@ -8,7 +8,7 @@ environment:
 
 dependencies:
   erp_schema:
-    path: ../erp-schema/generated/dart
+    path: ../schema/generated/dart
   dio: ^5.11.0
   file_picker: ^11.0.3
   flutter:
