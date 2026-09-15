@@ -100,7 +100,7 @@ packages:
   erp_schema:
     dependency: "direct main"
     description:
-      path: "../../../erp-schema/generated/dart"
+      path: "../schema/generated/dart"
       relative: true
     source: path
     version: "0.1.0"
