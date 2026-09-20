@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/widgets/crud_list.dart';
+import '../../../../app/widgets/list_filters.dart';
 import '../../../../app/widgets/form_kit.dart';
 import '../../domain/entities.dart';
 import '../stock_providers.dart';
@@ -18,6 +19,17 @@ class BalancesPage extends ConsumerWidget {
       value: balances,
       onRefresh: () => ref.read(balancesProvider.notifier).reload(),
       titleOf: (b) => products[b.productId]?.name ?? b.productId,
+      searchTextOf: (b) =>
+          '${products[b.productId]?.name ?? ''} ${products[b.productId]?.sku ?? ''} ${warehouses[b.warehouseId]?.name ?? ''}',
+      filters: [
+        ListFilter<Balance>.byValue(
+          label: 'Almoxarifado',
+          valueOf: (b) => b.warehouseId,
+          options: [
+            for (final w in warehouses.values) FilterOption(w.id, w.name),
+          ],
+        ),
+      ],
       subtitleOf: (b) {
         final p = products[b.productId];
         final um = p?.stockUom.isNotEmpty == true ? p!.stockUom : (p?.saleUom ?? '');

@@ -16,7 +16,10 @@ class AuthRemoteDatasource {
     );
     return (
       token: body['token'] as String,
-      user: UserModel.fromJson(body['user'] as Map<String, dynamic>),
+      user: UserModel.fromJson(
+        body['user'] as Map<String, dynamic>,
+        menus: body['menu_permissions'],
+      ),
     );
   }
 

@@ -12,7 +12,8 @@ class ApiConfig {
   }
 
   static String get _defaultBaseUrl {
-    if (Platform.isAndroid) return 'http://10.0.2.2:3100';
-    return 'http://localhost:3100';
+    // Gateway (GATEWAY_HTTP_PORT), exposed by both the prod and dev stacks.
+    if (Platform.isAndroid) return 'http://10.0.2.2:8086';
+    return 'http://localhost:8086';
   }
 }

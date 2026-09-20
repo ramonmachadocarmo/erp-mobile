@@ -4,11 +4,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/theme.dart';
 import '../../../../app/widgets/crud_list.dart';
+import '../../../../app/widgets/list_filters.dart';
 import '../../../../app/widgets/form_kit.dart';
 import '../../../../app/widgets/status_chip.dart';
 import '../../../../app/widgets/person_form.dart';
 import '../../../config/domain/entities.dart';
 import '../../../stock/domain/entities.dart';
+import '../../../config/presentation/config_providers.dart';
 import '../../../stock/presentation/stock_providers.dart';
 import '../../domain/entities.dart';
 import '../sales_providers.dart';
@@ -30,7 +32,9 @@ double stockOnHand(List<Balance> bals, String productId) {
 }
 
 bool orderStockShort(SalesOrder o, List<Balance> bals) {
-  return o.items.any((it) => it.quantity > stockOnHand(bals, it.productId) + 1e-9);
+  return o.items.any(
+    (it) => it.quantity > stockOnHand(bals, it.productId) + 1e-9,
+  );
 }
 
 class CustomersPage extends ConsumerWidget {
@@ -44,6 +48,13 @@ class CustomersPage extends ConsumerWidget {
       onRefresh: () => ref.read(customersProvider.notifier).reload(),
       titleOf: (p) => p.displayName,
       subtitleOf: (p) => '${p.kind} · ${p.document} · ${p.phone}',
+      filters: [
+        ListFilter<Person>.byValue(
+          label: 'Tipo',
+          valueOf: (p) => p.kind,
+          options: const [FilterOption('PF', 'Pessoa física'), FilterOption('PJ', 'Pessoa jurídica')],
+        ),
+      ],
       onCreate: () => pushForm(
         context,
         PersonForm(
@@ -63,10 +74,29 @@ class CustomersPage extends ConsumerWidget {
   }
 }
 
+const _orderStatuses = [
+  'PENDING_RESERVATION',
+  'APPROVED',
+  'PICKING',
+  'PICKED',
+  'DELIVERED',
+  'UNDELIVERED',
+  'INVOICED',
+  'CANCELLED',
+];
+
+String paymentStatusLabel(String s) => s == 'PAID' ? 'Pago' : 'Pendente';
+
+String _paymentOf(SalesOrder o) =>
+    o.paymentStatus.isEmpty ? 'PENDING' : o.paymentStatus;
+
 class SalesOrdersPage extends ConsumerWidget {
-  const SalesOrdersPage({super.key, this.forPicking = false});
+  const SalesOrdersPage({super.key, this.forPicking = false, this.pdv = false});
 
   final bool forPicking;
+
+  /// PDV counter sale: payment collected on the spot, address optional.
+  final bool pdv;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -74,7 +104,12 @@ class SalesOrdersPage extends ConsumerWidget {
     final shown = forPicking
         ? orders.whenData(
             (list) => list
-                .where((o) => o.status == 'APPROVED' || o.status == 'PICKING' || o.status == 'PICKED')
+                .where(
+                  (o) =>
+                      o.status == 'APPROVED' ||
+                      o.status == 'PICKING' ||
+                      o.status == 'PICKED',
+                )
                 .toList(),
           )
         : orders;
@@ -94,9 +129,34 @@ class SalesOrdersPage extends ConsumerWidget {
       titleOf: (o) => customers[o.customerId] ?? o.customerId,
       subtitleOf: (o) => forPicking
           ? '${o.pickingNumber > 0 ? 'Sep. ${sepNo(o.pickingNumber)} · ' : ''}${statusView(o.status).label} · ${brl(o.totalAmount)}\nPedido ${fmtDt(o.createdAt)} · Separação ${fmtDt(o.pickedAt)}'
-          : '${statusView(o.status).label}${orderStockShort(o, bals) ? ' · Estoque insuficiente' : ''} · ${brl(o.totalAmount)}',
+          : '${statusView(o.status).label} · ${paymentStatusLabel(o.paymentStatus)}${orderStockShort(o, bals) ? ' · Estoque insuficiente' : ''} · ${brl(o.totalAmount)}',
       isThreeLine: forPicking,
-      onCreate: forPicking ? null : () => pushForm(context, const _OrderForm()),
+      searchTextOf: (o) =>
+          '${customers[o.customerId] ?? ''} ${orderNo(o.id)} ${sepNo(o.pickingNumber)} ${statusView(o.status).label}',
+      // The separation list is already narrowed to a few statuses.
+      filters: forPicking
+          ? const []
+          : [
+              ListFilter<SalesOrder>.byValue(
+                label: 'Status',
+                valueOf: (o) => o.status,
+                options: [
+                  for (final st in _orderStatuses)
+                    FilterOption(st, statusView(st).label),
+                ],
+              ),
+              ListFilter<SalesOrder>.byValue(
+                label: 'Pagamento',
+                valueOf: _paymentOf,
+                options: const [
+                  FilterOption('PAID', 'Pago'),
+                  FilterOption('PENDING', 'Pendente'),
+                ],
+              ),
+            ],
+      onCreate: forPicking
+          ? null
+          : () => pushForm(context, _OrderForm(pdv: pdv)),
       onTap: forPicking
           ? (o) => context.push('/logistica/separacao/${o.id}')
           : null,
@@ -140,14 +200,18 @@ class SalesOrdersPage extends ConsumerWidget {
           ref.read(salesOrdersProvider.notifier).cancel(o.id);
         }
         if (action == 'pick') context.push('/logistica/separacao/${o.id}');
-        if (action == 'undo') ref.read(salesOrdersProvider.notifier).undoPicking(o.id);
+        if (action == 'undo') {
+          ref.read(salesOrdersProvider.notifier).undoPicking(o.id);
+        }
       },
     );
   }
 }
 
 class _OrderForm extends ConsumerStatefulWidget {
-  const _OrderForm();
+  const _OrderForm({this.pdv = false});
+
+  final bool pdv;
 
   @override
   ConsumerState<_OrderForm> createState() => _OrderFormState();
@@ -160,41 +224,22 @@ class _OrderFormState extends ConsumerState<_OrderForm> {
   var _termId = '';
   var _address = const Address();
   final _items = <OrderLine>[];
-  var _productId = '';
-  final _qty = TextEditingController(text: '1');
-  final _price = TextEditingController();
-  var _draftKey = 0;
   var _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _qty.addListener(() => setState(() {}));
     Future.microtask(() => ref.invalidate(salesLookupsProvider));
   }
 
-  String _fmtPrice(double n) {
-    if (n <= 0) return '';
-    if (n == n.roundToDouble()) return '${n.toInt()}';
-    return n.toStringAsFixed(2);
-  }
-
-  void _fillPrice(
-    List<
-      ({String id, String sku, String name, String barcode, double salePrice})
-    >
-    products,
-    String? id,
-  ) {
-    final p = products.where((x) => x.id == id).firstOrNull;
-    _price.text = p == null ? '' : _fmtPrice(p.salePrice);
-  }
-
-  @override
-  void dispose() {
-    _qty.dispose();
-    _price.dispose();
-    super.dispose();
+  void _pickCustomer(Person? c) {
+    setState(() {
+      _customerId = c?.id ?? '';
+      // A single registered address is the obvious choice.
+      _address = c != null && c.addresses.length == 1
+          ? c.addresses.first
+          : const Address();
+    });
   }
 
   @override
@@ -202,97 +247,50 @@ class _OrderFormState extends ConsumerState<_OrderForm> {
     final bals = ref.watch(balancesProvider).valueOrNull ?? [];
     final lookups = ref.watch(salesLookupsProvider).valueOrNull;
     final products = lookups?.products ?? [];
-    final customer = (lookups?.customers ?? [])
-        .where((c) => c.id == _customerId)
-        .firstOrNull;
+    final customers = lookups?.customers ?? const <Person>[];
+    final customer = customers.where((c) => c.id == _customerId).firstOrNull;
     final addresses = customer?.addresses ?? const <Address>[];
     final selectedAddr =
         addresses
             .where((a) => a.id == _address.id && a.id.isNotEmpty)
             .firstOrNull ??
-        (addresses
+        addresses
             .where(
               (a) => a.alias == _address.alias && _address.alias.isNotEmpty,
             )
-            .firstOrNull);
-    ref.listen(salesLookupsProvider, (_, next) {
-      final list = next.valueOrNull?.products ?? [];
-      if (_productId.isNotEmpty) _fillPrice(list, _productId);
-    });
+            .firstOrNull;
     return Form(
       key: _form,
       child: FormScaffold(
-        title: 'Novo pedido',
+        title: widget.pdv ? 'Nova venda' : 'Novo pedido',
         saving: _saving,
         onSave: _save,
         child: Column(
           children: [
-            ErpDropdown<String>(
-              label: 'Cliente',
-              value: _customerId.isEmpty ? null : _customerId,
-              items: (lookups?.customers ?? [])
-                  .map(
-                    (c) => DropdownMenuItem(
-                      value: c.id,
-                      child: Text(c.displayName),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() {
-                _customerId = v ?? '';
-                _address = const Address();
-                final c = (lookups?.customers ?? [])
-                    .where((x) => x.id == _customerId)
-                    .firstOrNull;
-                if (c != null && c.addresses.length == 1) {
-                  _address = c.addresses.first;
-                }
-              }),
+            ErpAutocompleteAdd<Person>(
+              onAdd: () => _newCustomer(customers),
+              field: ErpAutocomplete<Person>(
+                label: 'Cliente',
+                options: customers,
+                selected: customer,
+                display: (c) => c.displayName,
+                searchText: (c) => '${c.displayName} ${c.document}',
+                onSelected: _pickCustomer,
+                onCleared: () => _pickCustomer(null),
+              ),
             ),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Autocomplete<Address>(
-                    key: ValueKey('${_customerId}_${_address.alias}'),
-                    initialValue: TextEditingValue(
-                      text: selectedAddr == null ? '' : selectedAddr.label,
-                    ),
-                    displayStringForOption: (a) => a.label,
-                    optionsBuilder: (v) {
-                      final q = v.text.trim().toLowerCase();
-                      if (q.isEmpty) return addresses;
-                      return addresses.where(
-                        (a) =>
-                            a.alias.toLowerCase().contains(q) ||
-                            a.label.toLowerCase().contains(q),
-                      );
-                    },
-                    onSelected: (a) => setState(() => _address = a),
-                    fieldViewBuilder: (context, controller, focus, onSubmit) {
-                      return TextField(
-                        controller: controller,
-                        focusNode: focus,
-                        enabled: _customerId.isNotEmpty,
-                        onSubmitted: (_) => onSubmit(),
-                        decoration: const InputDecoration(
-                          labelText: 'Endereço',
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: IconButton.filled(
-                    onPressed: _customerId.isEmpty
-                        ? null
-                        : () => _newAddress(customer!),
-                    icon: const Icon(Icons.add),
-                  ),
-                ),
-              ],
+            ErpAutocompleteAdd<Address>(
+              onAdd: _customerId.isEmpty ? null : () => _newAddress(customer!),
+              field: ErpAutocomplete<Address>(
+                label: 'Endereço',
+                enabled: _customerId.isNotEmpty,
+                options: addresses,
+                selected: selectedAddr,
+                display: (a) => a.label,
+                searchText: (a) => '${a.alias} ${a.label}',
+                onSelected: (a) => setState(() => _address = a),
+                onCleared: () => setState(() => _address = const Address()),
+              ),
             ),
             ErpDropdown<String>(
               label: 'Forma',
@@ -314,48 +312,9 @@ class _OrderFormState extends ConsumerState<_OrderForm> {
                   .toList(),
               onChanged: (v) => setState(() => _termId = v ?? ''),
             ),
-            KeyedSubtree(
-              key: ValueKey(_draftKey),
-              child: Column(
-                children: [
-                  ErpDropdown<String>(
-                    label: 'Produto',
-                    value: _productId.isEmpty ? null : _productId,
-                    items: products
-                        .map(
-                          (p) => DropdownMenuItem(
-                            value: p.id,
-                            child: Text('${p.sku} — ${p.name}'),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) {
-                      setState(() {
-                        _productId = v ?? '';
-                        _fillPrice(products, v);
-                      });
-                    },
-                  ),
-                  QtyPriceFields(qty: _qty, price: _price),
-                  if (_productId.isNotEmpty &&
-                      parseNum(_qty.text, 1) +
-                              _items
-                                  .where((i) => i.productId == _productId)
-                                  .fold(0.0, (n, i) => n + i.quantity) >
-                          stockAvail(bals, _productId) + 1e-9)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        'Estoque insuficiente (disp. ${stockAvail(bals, _productId)})',
-                        style: const TextStyle(color: erpDanger, fontSize: 13),
-                      ),
-                    ),
-                ],
-              ),
-            ),
             LineItemsBar(
               count: _items.length,
-              onAdd: _add,
+              onAdd: () => _addItem(products, bals),
               onOpen: () => pushForm(
                 context,
                 LineItemsPage<OrderLine>(
@@ -377,21 +336,31 @@ class _OrderFormState extends ConsumerState<_OrderForm> {
     );
   }
 
-  void _add() {
-    if (_productId.isEmpty) return;
-    setState(() {
-      _items.add(
-        OrderLine(
-          productId: _productId,
-          quantity: parseNum(_qty.text, 1),
-          unitPrice: parseNum(_price.text),
-        ),
-      );
-      _productId = '';
-      _qty.text = '1';
-      _price.text = '';
-      _draftKey++;
-    });
+  Future<void> _addItem(List<_Product> products, List<Balance> bals) async {
+    final line = await showModalBottomSheet<OrderLine>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _ItemSheet(products: products, bals: bals, items: _items),
+    );
+    if (line != null && mounted) setState(() => _items.add(line));
+  }
+
+  Future<void> _newCustomer(List<Person> current) async {
+    final before = {for (final c in current) c.id};
+    await pushForm(
+      context,
+      PersonForm(
+        title: 'Novo cliente',
+        onSave: (p) => ref.read(customersProvider.notifier).save(p),
+      ),
+    );
+    if (!mounted) return;
+    ref.invalidate(salesLookupsProvider);
+    final fresh = await ref.read(salesLookupsProvider.future);
+    final created = fresh.customers
+        .where((c) => !before.contains(c.id))
+        .firstOrNull;
+    if (created != null && mounted) _pickCustomer(created);
   }
 
   Future<void> _newAddress(Person customer) async {
@@ -400,31 +369,34 @@ class _OrderFormState extends ConsumerState<_OrderForm> {
       builder: (_) => const _AddressDialog(),
     );
     if (created == null || !mounted) return;
-    await ref
-        .read(customersProvider.notifier)
-        .save(
-          Person(
-            id: customer.id,
-            kind: customer.kind,
-            document: customer.document,
-            name: customer.name,
-            phone: customer.phone,
-            companyName: customer.companyName,
-            responsibleName: customer.responsibleName,
-            birthDate: customer.birthDate,
-            gender: customer.gender,
-            addresses: [...customer.addresses, created],
-          ),
-        );
-    await ref.read(customersProvider.notifier).reload();
-    ref.invalidate(salesLookupsProvider);
-    if (!mounted) return;
-    setState(() => _address = created);
+    try {
+      await ref
+          .read(customersProvider.notifier)
+          .save(
+            Person(
+              id: customer.id,
+              kind: customer.kind,
+              document: customer.document,
+              name: customer.name,
+              phone: customer.phone,
+              companyName: customer.companyName,
+              responsibleName: customer.responsibleName,
+              birthDate: customer.birthDate,
+              gender: customer.gender,
+              addresses: [...customer.addresses, created],
+            ),
+          );
+      ref.invalidate(salesLookupsProvider);
+      if (!mounted) return;
+      setState(() => _address = created);
+    } catch (e) {
+      if (mounted) showError(context, '$e');
+    }
   }
 
   Future<void> _save() async {
     if (!(_form.currentState?.validate() ?? false)) return;
-    if (_address.alias.isEmpty && _address.street.isEmpty) {
+    if (!widget.pdv && _address.alias.isEmpty && _address.street.isEmpty) {
       showError(context, 'Selecione o endereço');
       return;
     }
@@ -443,6 +415,7 @@ class _OrderFormState extends ConsumerState<_OrderForm> {
               totalAmount: 0,
               items: List.of(_items),
               address: _address,
+              paymentStatus: widget.pdv ? 'PAID' : '',
             ),
           );
       if (mounted) Navigator.of(context).pop();
@@ -454,14 +427,17 @@ class _OrderFormState extends ConsumerState<_OrderForm> {
   }
 }
 
-class _AddressDialog extends StatefulWidget {
+class _AddressDialog extends ConsumerStatefulWidget {
   const _AddressDialog();
 
   @override
-  State<_AddressDialog> createState() => _AddressDialogState();
+  ConsumerState<_AddressDialog> createState() => _AddressDialogState();
 }
 
-class _AddressDialogState extends State<_AddressDialog> {
+class _AddressDialogState extends ConsumerState<_AddressDialog> {
+  final _numberFocus = FocusNode();
+  var _searching = false;
+
   final _alias = TextEditingController();
   final _zip = TextEditingController();
   final _street = TextEditingController();
@@ -481,7 +457,36 @@ class _AddressDialogState extends State<_AddressDialog> {
     _district.dispose();
     _city.dispose();
     _state.dispose();
+    _numberFocus.dispose();
     super.dispose();
+  }
+
+  Future<void> _searchCep() async {
+    if (_searching) return;
+    final digits = _zip.text.replaceAll(RegExp(r'\D'), '');
+    if (digits.length != 8) {
+      showError(context, 'Informe um CEP com 8 dígitos');
+      return;
+    }
+    setState(() => _searching = true);
+    final result = await ref.read(configRepositoryProvider).lookupCep(digits);
+    if (!mounted) return;
+    setState(() => _searching = false);
+    result.when(
+      ok: (a) {
+        // Keep whatever the user already typed when the lookup has no value.
+        String pick(String found, TextEditingController c) =>
+            found.isNotEmpty ? found : c.text;
+        _zip.text = pick(a.zip, _zip);
+        _street.text = pick(a.street, _street);
+        _complement.text = pick(a.complement, _complement);
+        _district.text = pick(a.district, _district);
+        _city.text = pick(a.city, _city);
+        _state.text = pick(a.state, _state);
+        _numberFocus.requestFocus();
+      },
+      err: (f) => showError(context, f.message),
+    );
   }
 
   @override
@@ -499,8 +504,29 @@ class _AddressDialogState extends State<_AddressDialog> {
             ),
             TextField(
               controller: _zip,
-              decoration: const InputDecoration(labelText: 'CEP'),
               keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _searchCep(),
+              onChanged: (v) {
+                if (v.replaceAll(RegExp(r'\D'), '').length == 8) _searchCep();
+              },
+              decoration: InputDecoration(
+                labelText: 'CEP',
+                suffixIcon: _searching
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : IconButton(
+                        icon: const Icon(Icons.search),
+                        tooltip: 'Buscar CEP',
+                        onPressed: _searchCep,
+                      ),
+              ),
             ),
             TextField(
               controller: _street,
@@ -508,6 +534,7 @@ class _AddressDialogState extends State<_AddressDialog> {
             ),
             TextField(
               controller: _number,
+              focusNode: _numberFocus,
               decoration: const InputDecoration(labelText: 'Número'),
             ),
             TextField(
@@ -553,6 +580,128 @@ class _AddressDialogState extends State<_AddressDialog> {
           child: const Text('Salvar'),
         ),
       ],
+    );
+  }
+}
+
+typedef _Product = ({
+  String id,
+  String sku,
+  String name,
+  String barcode,
+  double salePrice,
+});
+
+/// Bottom sheet that collects one order line (product, quantity, price).
+class _ItemSheet extends StatefulWidget {
+  const _ItemSheet({
+    required this.products,
+    required this.bals,
+    required this.items,
+  });
+
+  final List<_Product> products;
+  final List<Balance> bals;
+  final List<OrderLine> items;
+
+  @override
+  State<_ItemSheet> createState() => _ItemSheetState();
+}
+
+class _ItemSheetState extends State<_ItemSheet> {
+  _Product? _product;
+  final _qty = TextEditingController(text: '1');
+  final _price = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _qty.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _qty.dispose();
+    _price.dispose();
+    super.dispose();
+  }
+
+  String _fmtPrice(double n) {
+    if (n <= 0) return '';
+    if (n == n.roundToDouble()) return '${n.toInt()}';
+    return n.toStringAsFixed(2);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = _product;
+    final short =
+        p != null &&
+        parseNum(_qty.text, 1) +
+                widget.items
+                    .where((i) => i.productId == p.id)
+                    .fold(0.0, (n, i) => n + i.quantity) >
+            stockAvail(widget.bals, p.id) + 1e-9;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        16,
+        16,
+        16 + MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Adicionar item',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              ),
+            ),
+            ErpAutocomplete<_Product>(
+              label: 'Produto',
+              options: widget.products,
+              selected: p,
+              display: (x) => '${x.sku} — ${x.name}',
+              searchText: (x) => '${x.sku} ${x.name} ${x.barcode}',
+              onSelected: (x) => setState(() {
+                _product = x;
+                _price.text = _fmtPrice(x.salePrice);
+              }),
+              onCleared: () => setState(() {
+                _product = null;
+                _price.text = '';
+              }),
+            ),
+            QtyPriceFields(qty: _qty, price: _price),
+            if (short)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Estoque insuficiente (disp. ${stockAvail(widget.bals, p.id)})',
+                  style: const TextStyle(color: erpDanger, fontSize: 13),
+                ),
+              ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: p == null
+                  ? null
+                  : () => Navigator.pop(
+                      context,
+                      OrderLine(
+                        productId: p.id,
+                        quantity: parseNum(_qty.text, 1),
+                        unitPrice: parseNum(_price.text),
+                      ),
+                    ),
+              child: const Text('Adicionar'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -2,6 +2,7 @@ import '../../../core/error/result.dart';
 import 'entities.dart';
 
 abstract class ConfigRepository {
+  Future<Result<Address>> lookupCep(String cep);
   Future<Result<List<Unit>>> units();
   Future<Result<Unit>> saveUnit(Unit unit);
   Future<Result<List<PaymentMethod>>> methods();

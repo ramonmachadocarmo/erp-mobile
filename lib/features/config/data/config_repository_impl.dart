@@ -1,4 +1,5 @@
 import '../../../core/error/result.dart';
+import '../../../core/json.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_guard.dart';
 import '../domain/config_repository.dart';
@@ -9,6 +10,20 @@ class ConfigRepositoryImpl implements ConfigRepository {
   const ConfigRepositoryImpl(this._client);
 
   final ApiClient _client;
+
+  @override
+  Future<Result<Address>> lookupCep(String cep) => guardApi(() async {
+    final digits = cep.replaceAll(RegExp(r'\D'), '');
+    final j = await _client.get('/api/config/cep/$digits');
+    return Address(
+      zip: asString(j, 'zip'),
+      street: asString(j, 'street'),
+      complement: asString(j, 'complement'),
+      district: asString(j, 'district'),
+      city: asString(j, 'city'),
+      state: asString(j, 'state'),
+    );
+  });
 
   @override
   Future<Result<List<Unit>>> units() => guardApi(() async {

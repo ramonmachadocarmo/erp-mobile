@@ -119,6 +119,89 @@ class ErpDropdown<T> extends StatelessWidget {
   }
 }
 
+/// Type-to-filter picker. Shows [selected] in the field; [onSelected] fires when
+/// an option is tapped and [onCleared] when the user empties the text.
+class ErpAutocomplete<T extends Object> extends StatelessWidget {
+  const ErpAutocomplete({
+    super.key,
+    required this.label,
+    required this.options,
+    required this.selected,
+    required this.display,
+    required this.onSelected,
+    this.onCleared,
+    this.searchText,
+    this.enabled = true,
+  });
+
+  final String label;
+  final List<T> options;
+  final T? selected;
+  final String Function(T option) display;
+  final ValueChanged<T> onSelected;
+  final VoidCallback? onCleared;
+  final String Function(T option)? searchText;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = selected == null ? '' : display(selected as T);
+    final haystack = searchText ?? display;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Autocomplete<T>(
+        key: ValueKey('${label}_$current'),
+        initialValue: TextEditingValue(text: current),
+        displayStringForOption: display,
+        optionsBuilder: (v) {
+          final q = v.text.trim().toLowerCase();
+          if (q.isEmpty || q == current.toLowerCase()) return options;
+          return options.where((o) => haystack(o).toLowerCase().contains(q));
+        },
+        onSelected: onSelected,
+        fieldViewBuilder: (context, controller, focus, onSubmit) {
+          return TextField(
+            controller: controller,
+            focusNode: focus,
+            enabled: enabled,
+            onChanged: (t) {
+              if (t.isEmpty && selected != null) onCleared?.call();
+            },
+            onSubmitted: (_) => onSubmit(),
+            decoration: InputDecoration(
+              labelText: label,
+              hintText: options.isEmpty ? 'Nenhum cadastro' : 'Digite para buscar',
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// An [ErpAutocomplete] with a "+" button beside it to create a new entry.
+class ErpAutocompleteAdd<T extends Object> extends StatelessWidget {
+  const ErpAutocompleteAdd({super.key, required this.field, required this.onAdd});
+
+  final ErpAutocomplete<T> field;
+  final VoidCallback? onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: field),
+        const SizedBox(width: 8),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: IconButton.filled(onPressed: onAdd, icon: const Icon(Icons.add)),
+        ),
+      ],
+    );
+  }
+}
+
 class QtyPriceFields extends StatelessWidget {
   const QtyPriceFields({super.key, required this.qty, required this.price});
 
@@ -265,9 +348,10 @@ class _LineItemsPageState<T> extends State<LineItemsPage<T>> {
 }
 
 void showError(BuildContext context, String message) {
+  final text = message.replaceFirst(RegExp(r'^Exception:\s*'), '');
   ScaffoldMessenger.of(
     context,
-  ).showSnackBar(SnackBar(content: Text(message), backgroundColor: erpDanger));
+  ).showSnackBar(SnackBar(content: Text(text), backgroundColor: erpDanger));
 }
 
 double parseNum(String v, [double fallback = 0]) =>

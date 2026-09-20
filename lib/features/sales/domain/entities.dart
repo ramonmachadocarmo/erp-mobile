@@ -17,6 +17,7 @@ class SalesOrder {
     this.volumeCount = 0,
     this.address = const Address(),
     this.deliveryNote = '',
+    this.paymentStatus = '',
   });
 
   final String id;
@@ -34,6 +35,9 @@ class SalesOrder {
   final int volumeCount;
   final Address address;
   final String deliveryNote;
+
+  /// Only sent on create: PDV counter sales are collected on the spot (PAID).
+  final String paymentStatus;
 }
 
 class PickLine {
@@ -60,10 +64,10 @@ class OrderLine {
   final double unitPrice;
 
   Map<String, dynamic> toJson() => {
-        'product_id': productId,
-        'quantity': quantity,
-        'unit_price': unitPrice,
-      };
+    'product_id': productId,
+    'quantity': quantity,
+    'unit_price': unitPrice,
+  };
 }
 
 class SalesLookups {
@@ -76,7 +80,10 @@ class SalesLookups {
   });
 
   final List<Person> customers;
-  final List<({String id, String sku, String name, String barcode, double salePrice})> products;
+  final List<
+    ({String id, String sku, String name, String barcode, double salePrice})
+  >
+  products;
   final List<({String id, String code, String name})> warehouses;
   final List<PaymentMethod> methods;
   final List<PaymentTerm> terms;

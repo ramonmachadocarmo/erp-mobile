@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/widgets/crud_list.dart';
+import '../../../../app/widgets/list_filters.dart';
 import '../../../../app/widgets/form_kit.dart';
 import '../../../config/domain/entities.dart';
 import '../../domain/entities.dart';
@@ -18,6 +19,19 @@ class ProductsPage extends ConsumerWidget {
       onRefresh: () => ref.read(productsProvider.notifier).reload(),
       titleOf: (p) => p.name,
       subtitleOf: (p) => '${p.sku} · ${p.kindLabel} · ${brl(p.salePrice)}',
+      searchTextOf: (p) => '${p.name} ${p.sku} ${p.barcode} ${p.kindLabel}',
+      filters: [
+        ListFilter<Product>.byValue(
+          label: 'Tipo',
+          valueOf: (p) => p.kind,
+          options: const [
+            FilterOption('FINAL', 'Final'),
+            FilterOption('SUPPORT', 'Apoio'),
+            FilterOption('FIXED_ASSET', 'Ativo fixo'),
+          ],
+        ),
+        ListFilter<Product>.byValue(label: 'Unidade', valueOf: (p) => p.saleUom),
+      ],
       onCreate: () => pushForm(context, const ProductFormPage()),
       onEdit: (p) => pushForm(context, ProductFormPage(product: p)),
       onDelete: (p) => ref.read(productsProvider.notifier).remove(p.id),

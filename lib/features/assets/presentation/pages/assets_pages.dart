@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/widgets/crud_list.dart';
+import '../../../../app/widgets/list_filters.dart';
 import '../../../../app/widgets/form_kit.dart';
 import '../../domain/entities.dart';
 import '../assets_providers.dart';
@@ -17,6 +18,10 @@ class AssetsPage extends ConsumerWidget {
       onRefresh: () => ref.read(assetsProvider.notifier).reload(),
       titleOf: (a) => a.tag,
       subtitleOf: (a) => '${a.status} · ${a.location} · ${brl(a.netBookValue)}',
+      filters: [
+        ListFilter<FixedAsset>.byValue(label: 'Status', valueOf: (a) => a.status),
+        ListFilter<FixedAsset>.byValue(label: 'Local', valueOf: (a) => a.location),
+      ],
       onCreate: () => pushForm(context, const _AssetForm()),
       onEdit: (a) {
         if (a.status != 'DISPOSED') pushForm(context, _AssetForm(asset: a));
@@ -48,6 +53,9 @@ class AssetMovementsPage extends ConsumerWidget {
       onRefresh: () => ref.read(assetMovementsProvider.notifier).reload(),
       titleOf: (m) => m.typeLabel,
       subtitleOf: (m) => '${m.toLocation} · ${brl(m.amount)} · ${m.occurredAt}',
+      filters: [
+        ListFilter<AssetMovement>.byValue(label: 'Tipo', valueOf: (m) => m.typeLabel),
+      ],
     );
   }
 }

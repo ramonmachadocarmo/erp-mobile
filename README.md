@@ -1,6 +1,6 @@
 # Mobile
 
-Flutter (Android / iOS). Clean Architecture + Feature-first. HTTP pelo gateway em `:3100`.
+Flutter (Android / iOS). Clean Architecture + Feature-first. HTTP pelo gateway em `:8086`.
 
 ```
 lib/
@@ -13,9 +13,9 @@ Cada feature: `domain` / `data` / `presentation`. JWT em `flutter_secure_storage
 
 | Ambiente | Base URL |
 |---|---|
-| Android emulator | `http://10.0.2.2:3100` |
-| iOS simulator | `http://localhost:3100` |
-| Device | `--dart-define=API_BASE_URL=http://<LAN>:3100` |
+| Android emulator | `http://10.0.2.2:8086` |
+| iOS simulator | `http://localhost:8086` |
+| Device | `--dart-define=API_BASE_URL=http://<LAN>:8086` |
 
 Login: `admin@erp.local` / `admin123`
 

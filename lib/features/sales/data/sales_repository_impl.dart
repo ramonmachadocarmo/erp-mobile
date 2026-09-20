@@ -35,6 +35,8 @@ class SalesRepositoryImpl implements SalesRepository {
         'payment_method_id': order.paymentMethodId,
         'payment_term_id': order.paymentTermId,
         'discount_amount': 0,
+        if (order.paymentStatus.isNotEmpty)
+          'payment_status': order.paymentStatus,
         'address': order.address.toJson(),
         'items': order.items.map((i) => i.toJson()).toList(),
       },
@@ -64,14 +66,16 @@ class SalesRepositoryImpl implements SalesRepository {
   });
 
   @override
-  Future<Result<SalesOrder>> completePicking(String id, {required int volumeCount}) =>
-      guardApi(() async {
-        final json = await _client.post(
-          '/api/sales/sales-orders/$id/picking/complete',
-          body: {'volume_count': volumeCount},
-        );
-        return orderFrom(json);
-      });
+  Future<Result<SalesOrder>> completePicking(
+    String id, {
+    required int volumeCount,
+  }) => guardApi(() async {
+    final json = await _client.post(
+      '/api/sales/sales-orders/$id/picking/complete',
+      body: {'volume_count': volumeCount},
+    );
+    return orderFrom(json);
+  });
 
   @override
   Future<Result<void>> undoPicking(String id) =>
@@ -82,8 +86,10 @@ class SalesRepositoryImpl implements SalesRepository {
       guardApi(() => _client.post('/api/sales/sales-orders/$id/deliver'));
 
   @override
-  Future<Result<void>> failDelivery(String id, String note) =>
-      guardApi(() => _client.post('/api/sales/sales-orders/$id/fail', body: {'note': note}));
+  Future<Result<void>> failDelivery(String id, String note) => guardApi(
+    () =>
+        _client.post('/api/sales/sales-orders/$id/fail', body: {'note': note}),
+  );
 
   @override
   Future<Result<void>> undoDeliver(String id) =>
@@ -91,17 +97,18 @@ class SalesRepositoryImpl implements SalesRepository {
 
   @override
   Future<Result<List<DeliveryPlan>>> deliveryPlans() => guardApi(() async {
-        final list = await _client.getList('/api/sales/delivery-plans');
-        return list.map(planFrom).toList();
-      });
+    final list = await _client.getList('/api/sales/delivery-plans');
+    return list.map(planFrom).toList();
+  });
 
   @override
   Future<Result<DeliveryPlan>> getDeliveryPlan(String id) => guardApi(() async {
-        return planFrom(await _client.get('/api/sales/delivery-plans/$id'));
-      });
+    return planFrom(await _client.get('/api/sales/delivery-plans/$id'));
+  });
 
   @override
-  Future<Result<List<DeliveryCandidate>>> deliveryCandidates() => guardApi(() async {
+  Future<Result<List<DeliveryCandidate>>> deliveryCandidates() =>
+      guardApi(() async {
         final list = await _client.getList('/api/sales/delivery-candidates');
         return list.map(candidateFrom).toList();
       });
@@ -111,38 +118,44 @@ class SalesRepositoryImpl implements SalesRepository {
     required String centerId,
     required List<String> vehicleIds,
     required List<String> orderIds,
-  }) =>
-      guardApi(() async {
-        final j = await _client.post('/api/sales/delivery-plans', body: {
-          'center_id': centerId,
-          'vehicle_ids': vehicleIds,
-          'order_ids': orderIds,
-        });
-        return planResultFrom(j);
-      });
+  }) => guardApi(() async {
+    final j = await _client.post(
+      '/api/sales/delivery-plans',
+      body: {
+        'center_id': centerId,
+        'vehicle_ids': vehicleIds,
+        'order_ids': orderIds,
+      },
+    );
+    return planResultFrom(j);
+  });
 
   @override
-  Future<Result<DeliveryPlan>> confirmDeliveryPlan(String id, {RouteOption? option}) =>
-      guardApi(() async {
-        final body = option == null
-            ? <String, dynamic>{}
-            : {
-                'distance_m': option.distanceM,
-                'duration_s': option.durationS,
-                'stops': [
-                  for (final s in option.stops)
-                    {
-                      'seq': s.seq,
-                      'sales_order_id': s.salesOrderId,
-                      'distance_m': s.distanceM,
-                      'duration_s': s.durationS,
-                      'lat': s.lat,
-                      'lng': s.lng,
-                    },
-                ],
-              };
-        return planFrom(await _client.post('/api/sales/delivery-plans/$id/confirm', body: body));
-      });
+  Future<Result<DeliveryPlan>> confirmDeliveryPlan(
+    String id, {
+    RouteOption? option,
+  }) => guardApi(() async {
+    final body = option == null
+        ? <String, dynamic>{}
+        : {
+            'distance_m': option.distanceM,
+            'duration_s': option.durationS,
+            'stops': [
+              for (final s in option.stops)
+                {
+                  'seq': s.seq,
+                  'sales_order_id': s.salesOrderId,
+                  'distance_m': s.distanceM,
+                  'duration_s': s.durationS,
+                  'lat': s.lat,
+                  'lng': s.lng,
+                },
+            ],
+          };
+    return planFrom(
+      await _client.post('/api/sales/delivery-plans/$id/confirm', body: body),
+    );
+  });
 
   @override
   Future<Result<List<Person>>> customers() => guardApi(() async {

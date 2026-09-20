@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/di.dart';
 import '../../../app/widgets/crud_list.dart';
+import '../../../app/widgets/list_filters.dart';
 import '../../../app/widgets/form_kit.dart';
 import '../../purchasing/presentation/purchasing_providers.dart';
 import '../data/invoicing_repository_impl.dart';
@@ -65,6 +66,18 @@ class InvoicesPage extends ConsumerWidget {
       titleOf: (i) => '${i.series}-${i.invoiceNumber}',
       subtitleOf: (i) =>
           '${i.status} · ${i.source == 'IMPORT' ? 'Importada' : i.source == 'MANUAL' ? 'Sem nota' : 'Pedido'} · ${brl(i.totalInvoice)}',
+      filters: [
+        ListFilter<Invoice>.byValue(label: 'Status', valueOf: (i) => i.status),
+        ListFilter<Invoice>.byValue(
+          label: 'Origem',
+          valueOf: (i) => i.source,
+          options: const [
+            FilterOption('IMPORT', 'Importada'),
+            FilterOption('MANUAL', 'Sem nota'),
+            FilterOption('ORDER', 'Pedido'),
+          ],
+        ),
+      ],
       onCreate: () => _import(context, ref),
       extraActions: (i) => i.status == 'PENDING_SEFAZ'
           ? [const PopupMenuItem(value: 'issue', child: Text('Emitir NFe'))]

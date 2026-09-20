@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/theme.dart';
 import '../../../../app/widgets/crud_list.dart';
+import '../../../../app/widgets/list_filters.dart';
 import '../../../../app/widgets/form_kit.dart';
 import '../../../../app/widgets/person_form.dart';
+import '../../../../app/widgets/status_chip.dart';
 import '../../../config/domain/entities.dart';
 import '../../../config/presentation/config_providers.dart';
 import '../../../stock/presentation/stock_providers.dart';
@@ -22,6 +24,13 @@ class SuppliersPage extends ConsumerWidget {
       onRefresh: () => ref.read(suppliersProvider.notifier).reload(),
       titleOf: (p) => p.displayName,
       subtitleOf: (p) => '${p.kind} · ${p.document} · ${p.phone}',
+      filters: [
+        ListFilter<Person>.byValue(
+          label: 'Tipo',
+          valueOf: (p) => p.kind,
+          options: const [FilterOption('PF', 'Pessoa física'), FilterOption('PJ', 'Pessoa jurídica')],
+        ),
+      ],
       onCreate: () => pushForm(
         context,
         PersonForm(
@@ -55,6 +64,9 @@ class QuotesPage extends ConsumerWidget {
       onRefresh: () => ref.read(quotesProvider.notifier).reload(),
       titleOf: (q) => names[q.supplierId] ?? q.supplierId,
       subtitleOf: (q) => '${q.status?.name ?? ''} · ${brl(q.totalAmount ?? 0)}',
+      filters: [
+        ListFilter<Quote>.byValue(label: 'Status', valueOf: (q) => q.status?.name ?? ''),
+      ],
       onCreate: () => pushForm(context, const _QuoteForm()),
       extraActions: (q) => q.status == QuoteStatus.OPEN
           ? [const PopupMenuItem(value: 'convert', child: Text('Gerar pedido'))]
@@ -80,6 +92,13 @@ class PurchaseOrdersPage extends ConsumerWidget {
       onRefresh: () => ref.read(purchaseOrdersProvider.notifier).reload(),
       titleOf: (o) => names[o.supplierId] ?? o.supplierId,
       subtitleOf: (o) => '${o.status} · ${brl(o.totalAmount)}',
+      filters: [
+        ListFilter<PurchaseOrder>.byValue(
+          label: 'Status',
+          valueOf: (o) => o.status,
+          labelOf: (v) => statusView(v).label,
+        ),
+      ],
       onCreate: () => pushForm(context, const _PoForm()),
       extraActions: (o) => [
         if (o.status != 'RECEIVED' && o.status != 'CONFERRED')

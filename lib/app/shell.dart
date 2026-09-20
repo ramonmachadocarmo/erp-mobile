@@ -37,7 +37,12 @@ class AppShell extends ConsumerWidget {
           ),
         ],
       ),
-      drawer: Drawer(child: _NavDrawer(location: location)),
+      drawer: Drawer(
+        child: _NavDrawer(
+          location: location,
+          groups: ref.watch(accessProvider).filterNav(navGroups),
+        ),
+      ),
       body: child,
     );
   }
@@ -53,9 +58,10 @@ class AppShell extends ConsumerWidget {
 }
 
 class _NavDrawer extends StatefulWidget {
-  const _NavDrawer({required this.location});
+  const _NavDrawer({required this.location, required this.groups});
 
   final String location;
+  final List<NavGroup> groups;
 
   @override
   State<_NavDrawer> createState() => _NavDrawerState();
@@ -79,7 +85,7 @@ class _NavDrawerState extends State<_NavDrawer> {
   }
 
   String? _groupFor(String location) {
-    for (final g in navGroups) {
+    for (final g in widget.groups) {
       if (g.items.any((i) => i.path == location)) return g.title;
     }
     return null;
@@ -102,7 +108,7 @@ class _NavDrawerState extends State<_NavDrawer> {
               ),
             ),
           ),
-          for (final group in navGroups)
+          for (final group in widget.groups)
             _NavGroupTile(
               group: group,
               location: widget.location,

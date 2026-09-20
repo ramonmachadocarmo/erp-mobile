@@ -23,6 +23,7 @@ class UsersRepositoryImpl implements UsersRepository {
         final body = <String, dynamic>{
           'name': user.name,
           'email': user.email,
+          'role_id': user.roleId,
           if (password.isNotEmpty) 'password': password,
         };
         final json = user.id.isEmpty
@@ -36,4 +37,7 @@ User userFrom(Map<String, dynamic> j) => User(
       id: asString(j, 'id'),
       email: asString(j, 'email'),
       name: asString(j, 'name'),
+      roleId: asString(j, 'role_id'),
+      roleCode: asString(j, 'role_code'),
+      roleName: asString(j, 'role_name'),
     );
