@@ -4,7 +4,7 @@ Pipeline: `.github/workflows/android.yml`.
 
 - Pull request: `flutter analyze` + `flutter test`.
 - Tag `v*` (ex.: `git tag v0.1.0 && git push --tags`) ou "Run workflow" manual: testa, gera o `.aab` assinado e envia para a trilha `internal` (ou a escolhida no manual).
-- `versionCode` = número da run do GitHub; `versionName` = campo `version` do `pubspec.yaml`.
+- `versionCode` = número de build do `pubspec.yaml` (`version: x.y.z+N`), incrementado por `make mobile-release`; `versionName` = `x.y.z`.
 
 ## Setup único
 
@@ -26,3 +26,14 @@ Pipeline: `.github/workflows/android.yml`.
    - Variable: `API_BASE_URL` = `https://erp.personalia.cloud` (as rotas do app já incluem `/api/...`).
 
 Contas pessoais criadas após nov/2023 precisam de teste fechado com 12 testadores por 14 dias antes de liberar produção.
+
+## Publicar uma versão
+
+Na raiz do monorepo (`erp/`):
+
+```bash
+make mobile-release VERSION=0.3.0
+cd mobile && git push origin main --tags
+```
+
+O `make` atualiza `version:` no `pubspec.yaml` (build number +1), commita só esse arquivo no repo `mobile` e cria a tag `v0.3.0`. O push da tag dispara o deploy para a trilha `internal`.
