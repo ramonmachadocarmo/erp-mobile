@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'barcode_scan_page.dart';
 
 Future<void> pushForm(BuildContext context, Widget page) {
   return Navigator.of(
@@ -57,6 +58,7 @@ class ErpField extends StatelessWidget {
     this.required = false,
     this.obscure = false,
     this.minLength,
+    this.scannable = false,
   });
 
   final String label;
@@ -66,6 +68,9 @@ class ErpField extends StatelessWidget {
   final bool obscure;
   final int? minLength;
 
+  /// Mostra um botão que abre a câmera e preenche o campo com o código lido.
+  final bool scannable;
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -74,7 +79,19 @@ class ErpField extends StatelessWidget {
         controller: controller,
         keyboardType: keyboard,
         obscureText: obscure,
-        decoration: InputDecoration(labelText: label),
+        decoration: InputDecoration(
+          labelText: label,
+          suffixIcon: scannable
+              ? IconButton(
+                  tooltip: 'Ler com a câmera',
+                  icon: const Icon(Icons.qr_code_scanner),
+                  onPressed: () async {
+                    final code = await scanBarcode(context);
+                    if (code != null && code.isNotEmpty) controller.text = code;
+                  },
+                )
+              : null,
+        ),
         validator: (v) {
           final t = v?.trim() ?? '';
           if (required && t.isEmpty) return 'Obrigatório';
@@ -83,6 +100,63 @@ class ErpField extends StatelessWidget {
           }
           return null;
         },
+      ),
+    );
+  }
+}
+
+/// Campo de data (YYYY-MM-DD) usando o seletor nativo do Material — sem depender de pacote
+/// externo. [value] vazio mostra "Selecione". Toque abre `showDatePicker`.
+class ErpDateField extends StatelessWidget {
+  const ErpDateField({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    this.firstDate,
+    this.required = false,
+  });
+
+  final String label;
+  final String value;
+  final ValueChanged<String> onChanged;
+  final DateTime? firstDate;
+  final bool required;
+
+  @override
+  Widget build(BuildContext context) {
+    final parsed = DateTime.tryParse(value);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: FormField<String>(
+        initialValue: value,
+        validator: (v) => required && (v == null || v.isEmpty) ? 'Obrigatório' : null,
+        builder: (state) => InkWell(
+          onTap: () async {
+            final now = DateTime.now();
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: parsed ?? now,
+              firstDate: firstDate ?? DateTime(now.year - 1),
+              lastDate: DateTime(now.year + 2),
+            );
+            if (picked == null) return;
+            final iso =
+                '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+            state.didChange(iso);
+            onChanged(iso);
+          },
+          child: InputDecorator(
+            decoration: InputDecoration(
+              labelText: label,
+              suffixIcon: const Icon(Icons.calendar_today_outlined, size: 20),
+              errorText: state.errorText,
+            ),
+            child: Text(parsed == null
+                ? 'Selecione'
+                : '${parsed.day.toString().padLeft(2, '0')}/${parsed.month.toString().padLeft(2, '0')}/${parsed.year}'),
+          ),
+        ),
       ),
     );
   }

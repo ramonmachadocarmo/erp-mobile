@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme.dart';
 import '../../../../app/widgets/barcode_scan_page.dart';
 import '../../../../app/widgets/form_kit.dart';
+import '../../../../core/scan_code.dart';
+import '../../../stock/domain/product_lookup.dart';
 import '../../../config/presentation/config_providers.dart';
 import '../../../stock/domain/entities.dart';
 import '../../../stock/presentation/stock_providers.dart';
@@ -62,11 +64,12 @@ class _PickingPageState extends ConsumerState<PickingPage> {
     return list.where((p) => p.id == id).firstOrNull;
   }
 
-  Future<void> _pick(String productId, double qty) async {
-    if (_busy || qty <= 0) return;
+  /// True se a separação foi registrada; em falha, o motivo fica em [_error].
+  Future<bool> _pick(String productId, double qty) async {
+    if (_busy || qty <= 0) return false;
     if (_warehouseId.isEmpty) {
       setState(() => _error = 'Selecione o almoxarifado');
-      return;
+      return false;
     }
     final bals = ref.read(balancesProvider).valueOrNull ?? [];
     var stock = 0.0;
@@ -83,7 +86,7 @@ class _PickingPageState extends ConsumerState<PickingPage> {
     stock = stock - reserved + mine;
     if (_picked(productId) + qty > stock + 1e-9) {
       setState(() => _error = 'Estoque insuficiente no almoxarifado (disp. $stock)');
-      return;
+      return false;
     }
     setState(() {
       _busy = true;
@@ -100,13 +103,14 @@ class _PickingPageState extends ConsumerState<PickingPage> {
                     quantity: qty,
                   ))
               .getOrThrow();
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _order = updated;
         _error = '';
         _busy = false;
       });
       ref.read(salesOrdersProvider.notifier).reload();
+      return true;
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -114,6 +118,7 @@ class _PickingPageState extends ConsumerState<PickingPage> {
           _busy = false;
         });
       }
+      return false;
     }
   }
 
@@ -187,21 +192,20 @@ class _PickingPageState extends ConsumerState<PickingPage> {
     });
   }
 
-  Future<void> _applyCode(String raw) async {
-    final products = ref.read(productsProvider).valueOrNull ?? [];
-    final t = raw.trim();
-    final m = RegExp(r'^(.+?)\s*[,;]\s*(\d+(?:[.,]\d+)?)\s*$').firstMatch(t);
-    final q = (m?.group(1) ?? t).trim().toLowerCase();
-    final qty = m == null ? 1.0 : double.tryParse(m.group(2)!.replaceAll(',', '.')) ?? 1;
-    if (q.isEmpty || _order == null) return;
-    final product = products
-        .where((p) => p.barcode.toLowerCase() == q || p.sku.toLowerCase() == q)
-        .firstOrNull;
+  /// Trata uma leitura da câmera (modo contínuo) e devolve o resultado para a faixa sobre a câmera.
+  Future<ScanFeedback> _onScanned(String raw) async {
+    // Separação: só vale SKU/código (sem ",qtd") ou a etiqueta de pesagem, que já traz o peso.
+    final scan = decodeWeightBarcode(raw) ?? parseScanCode(raw, allowQuantity: false);
+    if (scan == null || _order == null) return const ScanFeedback.error('Código inválido');
+    final product = findProductByCode(ref.read(productsProvider).valueOrNull ?? [], scan.code);
     if (product == null) {
       setState(() => _error = 'Código não encontrado');
-      return;
+      return ScanFeedback.error('Código não encontrado: ${scan.code}');
     }
-    await _pick(product.id, qty);
+    if (await _pick(product.id, scan.quantity)) {
+      return ScanFeedback.ok('${product.name}: ${_picked(product.id)} separado(s)');
+    }
+    return ScanFeedback.error(_error.isEmpty ? 'Não foi possível registrar' : _error);
   }
 
   Future<void> _qtyModal(OrderLine it) async {
@@ -346,16 +350,13 @@ class _PickingPageState extends ConsumerState<PickingPage> {
                 FilledButton.icon(
                   onPressed: _busy
                       ? null
-                      : () async {
-                          final code = await scanBarcode(context);
-                          if (code != null) await _applyCode(code);
-                        },
+                      : () => scanBarcodes(context, onCode: _onScanned, title: 'Separação'),
                   icon: const Icon(Icons.qr_code_scanner),
                   label: Text(_busy ? 'Bipando...' : 'Bipar com a câmera'),
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Bipe o código de barras ou o QR do produto. Toque duas vezes no item para informar a quantidade.',
+                  'Bipe o SKU ou o código de barras do produto (1 unidade por leitura) ou a etiqueta de pesagem. Toque duas vezes no item para informar a quantidade.',
                   style: TextStyle(color: erpMuted),
                 ),
               ],

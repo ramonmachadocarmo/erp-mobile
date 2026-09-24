@@ -16,16 +16,24 @@ class PurchaseOrder {
     this.quoteId = '',
     this.paymentMethodId = '',
     this.paymentTermId = '',
+    this.paymentStatus = 'PENDING',
+    this.stockReceived = false,
     this.items = const [],
   });
 
   final String id;
   final String supplierId;
+  // Eixo de entrega: APPROVED (pendente entrega), RECEIVED, CONFERRED (finalizado), CANCELLED.
   final String status;
   final double totalAmount;
   final String quoteId;
   final String paymentMethodId;
   final String paymentTermId;
+  // Eixo financeiro, independente do de entrega: PENDING ou PAID.
+  final String paymentStatus;
+  // true depois que o estoque já recebeu a mercadoria — reabrir pra "pendente entrega" fica
+  // bloqueado nesse caso (senão um novo "Receber" lançaria a entrada em dobro).
+  final bool stockReceived;
   final List<PurchaseLine> items;
 }
 

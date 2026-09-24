@@ -57,7 +57,9 @@ class _UnitFormState extends ConsumerState<_UnitForm> {
         onSave: _save,
         child: Column(
           children: [
-            ErpField('Código', _code, required: true),
+            // Em branco na criação, o backend atribui um código sequencial (pkg/codes.Assign) —
+            // mesma regra do CodeInput no web (CodeInput.tsx): só fica obrigatório ao editar.
+            ErpField('Código', _code, required: widget.unit != null),
             ErpField('Nome', _name, required: true),
             ErpField('Símbolo', _symbol),
           ],

@@ -3,6 +3,14 @@ import 'entities.dart';
 
 abstract class ConfigRepository {
   Future<Result<Address>> lookupCep(String cep);
+  /// Inverso de [lookupCep]: acha o(s) CEP(s) a partir de UF + cidade + logradouro (bairro só
+  /// refina). Mesmo endpoint (`GET /api/config/cep`) usado pelo `CepPicker` do web.
+  Future<Result<List<Address>>> searchCep({
+    required String state,
+    required String city,
+    required String street,
+    String district,
+  });
   Future<Result<List<Unit>>> units();
   Future<Result<Unit>> saveUnit(Unit unit);
   Future<Result<List<PaymentMethod>>> methods();

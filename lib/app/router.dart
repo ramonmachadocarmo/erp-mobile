@@ -20,13 +20,12 @@ import '../features/logistics/presentation/pages/conference_page.dart';
 import '../features/logistics/presentation/pages/inbound_page.dart';
 import '../features/purchasing/presentation/pages/purchasing_pages.dart';
 import '../features/reports/presentation/reports_pages.dart';
-import '../features/sales/presentation/pages/delivery_page.dart';
 import '../features/sales/presentation/pages/picking_page.dart';
-import '../features/sales/presentation/pages/routes_page.dart';
 import '../features/sales/presentation/pages/sales_pages.dart';
 import '../features/stock/presentation/pages/assemblies_page.dart';
 import '../features/stock/presentation/pages/balances_prices_page.dart';
 import '../features/stock/presentation/pages/categories_page.dart';
+import '../features/stock/presentation/pages/movements_page.dart';
 import '../features/stock/presentation/pages/products_page.dart';
 import '../features/stock/presentation/pages/warehouses_page.dart';
 import 'shell.dart';
@@ -70,6 +69,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/estoque/almoxarifados', builder: (_, _) => const WarehousesPage()),
           GoRoute(path: '/estoque/montagem', builder: (_, _) => const AssembliesPage()),
           GoRoute(path: '/estoque/saldos', builder: (_, _) => const BalancesPage()),
+          GoRoute(path: '/estoque/movimentos', builder: (_, _) => const MovementsPage()),
           GoRoute(path: '/estoque/precos', redirect: (_, _) => '/vendas/precos'),
           GoRoute(path: '/vendas/pedidos', builder: (_, _) => const SalesOrdersPage()),
           GoRoute(path: '/vendas/precos', builder: (_, _) => const PricesPage()),
@@ -98,17 +98,6 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: ':id',
                 builder: (_, state) => PickingPage(orderId: state.pathParameters['id']!),
-              ),
-            ],
-          ),
-          GoRoute(path: '/logistica/entrega', builder: (_, _) => const DeliveryPage()),
-          GoRoute(
-            path: '/logistica/rotas',
-            builder: (_, _) => const RoutesPage(),
-            routes: [
-              GoRoute(
-                path: ':id',
-                builder: (_, state) => RouteStopsPage(planId: state.pathParameters['id']!),
               ),
             ],
           ),

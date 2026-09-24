@@ -35,6 +35,15 @@ class PurchasingRepositoryImpl implements PurchasingRepository {
       });
 
   @override
+  Future<Result<void>> updateQuote(String id, Quote quote) => guardApi(() async {
+        await _client.put('/api/purchasing/quotes/$id', body: quote.toJson());
+      });
+
+  @override
+  Future<Result<void>> deleteQuote(String id) =>
+      guardApi(() => _client.delete('/api/purchasing/quotes/$id'));
+
+  @override
   Future<Result<void>> convertQuote(
     String id, {
     required String methodId,
@@ -47,37 +56,55 @@ class PurchasingRepositoryImpl implements PurchasingRepository {
         ),
       );
 
+  PurchaseOrder _orderFrom(Map<String, dynamic> j) => PurchaseOrder(
+        id: asString(j, 'id'),
+        supplierId: asString(j, 'supplier_id'),
+        status: asString(j, 'status'),
+        totalAmount: asDouble(j, 'total_amount'),
+        quoteId: asString(j, 'quote_id'),
+        paymentMethodId: asString(j, 'payment_method_id'),
+        paymentTermId: asString(j, 'payment_term_id'),
+        paymentStatus: asString(j, 'payment_status').isEmpty ? 'PENDING' : asString(j, 'payment_status'),
+        stockReceived: asBool(j, 'stock_received'),
+        items: _lines(j['items']),
+      );
+
   @override
   Future<Result<List<PurchaseOrder>>> orders() => guardApi(() async {
         final list = await _client.getList('/api/purchasing/purchase-orders');
-        return list
-            .map(
-              (j) => PurchaseOrder(
-                id: asString(j, 'id'),
-                supplierId: asString(j, 'supplier_id'),
-                status: asString(j, 'status'),
-                totalAmount: asDouble(j, 'total_amount'),
-                quoteId: asString(j, 'quote_id'),
-                paymentMethodId: asString(j, 'payment_method_id'),
-                paymentTermId: asString(j, 'payment_term_id'),
-                items: _lines(j['items']),
-              ),
-            )
-            .toList();
+        return list.map(_orderFrom).toList();
       });
+
+  Map<String, dynamic> _orderBody(PurchaseOrder order) => {
+        'supplier_id': order.supplierId,
+        'payment_method_id': order.paymentMethodId,
+        'payment_term_id': order.paymentTermId,
+        'items': order.items.map((i) => i.toJson()).toList(),
+      };
 
   @override
   Future<Result<void>> createOrder(PurchaseOrder order) => guardApi(() async {
-        await _client.post(
-          '/api/purchasing/purchase-orders',
-          body: {
-            'supplier_id': order.supplierId,
-            'payment_method_id': order.paymentMethodId,
-            'payment_term_id': order.paymentTermId,
-            'items': order.items.map((i) => i.toJson()).toList(),
-          },
-        );
+        await _client.post('/api/purchasing/purchase-orders', body: _orderBody(order));
       });
+
+  @override
+  Future<Result<void>> updateOrder(String id, PurchaseOrder order) => guardApi(() async {
+        await _client.put('/api/purchasing/purchase-orders/$id', body: _orderBody(order));
+      });
+
+  @override
+  Future<Result<void>> deleteOrder(String id) =>
+      guardApi(() => _client.delete('/api/purchasing/purchase-orders/$id'));
+
+  @override
+  Future<Result<void>> setPaymentStatus(String id, String status) => guardApi(
+        () => _client.put('/api/purchasing/purchase-orders/$id/payment-status', body: {'status': status}),
+      );
+
+  @override
+  Future<Result<void>> setDeliveryStatus(String id, String status) => guardApi(
+        () => _client.put('/api/purchasing/purchase-orders/$id/delivery-status', body: {'status': status}),
+      );
 
   @override
   Future<Result<void>> receive(String id, {String warehouseId = ''}) =>

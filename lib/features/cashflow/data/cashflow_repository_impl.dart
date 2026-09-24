@@ -7,6 +7,9 @@ import '../domain/entities.dart';
 abstract class CashflowRepository {
   Future<Result<List<CashEntry>>> entries();
   Future<Result<List<CashSummary>>> summary();
+  Future<Result<void>> createManual(ManualEntry entry);
+  // Só aceito pelo backend pra lançamentos MANUAL (SALE/PURCHASE vêm de um pedido).
+  Future<Result<void>> deleteEntry(String id);
 }
 
 class CashflowRepositoryImpl implements CashflowRepository {
@@ -27,6 +30,7 @@ class CashflowRepositoryImpl implements CashflowRepository {
                 status: asString(j, 'status'),
                 paymentMethodCode: asString(j, 'payment_method_code'),
                 referenceType: asString(j, 'reference_type'),
+                description: asString(j, 'description'),
               ),
             )
             .toList();
@@ -47,4 +51,12 @@ class CashflowRepositoryImpl implements CashflowRepository {
             )
             .toList();
       });
+
+  @override
+  Future<Result<void>> createManual(ManualEntry entry) =>
+      guardApi(() => _client.post('/api/cashflow/entries', body: entry.toJson()));
+
+  @override
+  Future<Result<void>> deleteEntry(String id) =>
+      guardApi(() => _client.delete('/api/cashflow/entries/$id'));
 }

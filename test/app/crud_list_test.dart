@@ -20,7 +20,11 @@ const _items = [
   _Item('Arroz', 'FINAL'),
 ];
 
-Widget _app({List<ListFilter<_Item>> filters = const []}) {
+Widget _app({
+  List<ListFilter<_Item>> filters = const [],
+  bool Function(_Item)? canEdit,
+  bool Function(_Item)? canDelete,
+}) {
   const master = User(id: '1', email: 'a@b.c', name: 'A', roleCode: 'MASTER');
   final router = GoRouter(
     initialLocation: '/estoque/produtos',
@@ -33,6 +37,10 @@ Widget _app({List<ListFilter<_Item>> filters = const []}) {
           titleOf: (i) => i.name,
           subtitleOf: (i) => i.kind,
           filters: filters,
+          onEdit: canEdit == null ? null : (_) {},
+          onDelete: canDelete == null ? null : (_) async {},
+          canEdit: canEdit,
+          canDelete: canDelete,
         ),
       ),
     ],
@@ -89,5 +97,25 @@ void main() {
     await t.enterText(find.byType(TextField).first, 'arroz');
     await t.pump();
     expect(find.text('Nenhum resultado'), findsOneWidget);
+  });
+
+  testWidgets('canEdit/canDelete hide the action per item, not just per screen', (t) async {
+    // Only FINAL items are editable/deletable — mirrors e.g. a purchase order that can only be
+    // changed while still pending delivery and unpaid.
+    await t.pumpWidget(
+      _app(canEdit: (i) => i.kind == 'FINAL', canDelete: (i) => i.kind == 'FINAL'),
+    );
+
+    await t.longPress(find.text('Arroz'));
+    await t.pumpAndSettle();
+    expect(find.text('Editar'), findsOneWidget);
+    expect(find.text('Excluir'), findsOneWidget);
+    await t.tapAt(const Offset(10, 10));
+    await t.pumpAndSettle();
+
+    await t.longPress(find.text('Sacola plástica'));
+    await t.pumpAndSettle();
+    expect(find.text('Editar'), findsNothing);
+    expect(find.text('Excluir'), findsNothing);
   });
 }

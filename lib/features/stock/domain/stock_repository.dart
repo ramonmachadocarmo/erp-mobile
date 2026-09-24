@@ -25,4 +25,5 @@ abstract class StockRepository {
   Future<Result<List<Assembly>>> assemblies();
   Future<Result<Assembly>> saveAssembly(Assembly assembly);
   Future<Result<List<Unit>>> units();
+  Future<Result<List<StockMovement>>> movements();
 }

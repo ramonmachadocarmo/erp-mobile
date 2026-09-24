@@ -68,6 +68,11 @@ class QuotesPage extends ConsumerWidget {
         ListFilter<Quote>.byValue(label: 'Status', valueOf: (q) => q.status?.name ?? ''),
       ],
       onCreate: () => pushForm(context, const _QuoteForm()),
+      // Só orçamento aberto edita/exclui — convertido ou cancelado já não muda mais.
+      onEdit: (q) => pushForm(context, _QuoteForm(quote: q)),
+      canEdit: (q) => q.status == QuoteStatus.OPEN,
+      onDelete: (q) => ref.read(quotesProvider.notifier).deleteQuote(q.id ?? ''),
+      canDelete: (q) => q.status == QuoteStatus.OPEN,
       extraActions: (q) => q.status == QuoteStatus.OPEN
           ? [const PopupMenuItem(value: 'convert', child: Text('Gerar pedido'))]
           : const [],
@@ -77,6 +82,14 @@ class QuotesPage extends ConsumerWidget {
     );
   }
 }
+
+// Eixo financeiro do pedido de compra — independente do status de entrega (statusView acima).
+String _paymentStatusLabel(String s) => s == 'PAID' ? 'Pago' : 'Pendente';
+
+// Só pedido pendente de entrega (APPROVED) e ainda não pago pode ser editado/excluído — mesma
+// regra do backend (purchasing-service, editable() em service.go). Um pedido pago já moveu
+// dinheiro; reabra o financeiro pra PENDING antes de editar/excluir.
+bool _orderEditable(PurchaseOrder o) => o.status == 'APPROVED' && o.paymentStatus != 'PAID';
 
 class PurchaseOrdersPage extends ConsumerWidget {
   const PurchaseOrdersPage({super.key});
@@ -91,7 +104,9 @@ class PurchaseOrdersPage extends ConsumerWidget {
       value: orders,
       onRefresh: () => ref.read(purchaseOrdersProvider.notifier).reload(),
       titleOf: (o) => names[o.supplierId] ?? o.supplierId,
-      subtitleOf: (o) => '${o.status} · ${brl(o.totalAmount)}',
+      subtitleOf: (o) => o.status == 'CANCELLED'
+          ? '${statusView(o.status).label} · ${brl(o.totalAmount)}'
+          : '${statusView(o.status).label} · ${_paymentStatusLabel(o.paymentStatus)} · ${brl(o.totalAmount)}',
       filters: [
         ListFilter<PurchaseOrder>.byValue(
           label: 'Status',
@@ -100,12 +115,39 @@ class PurchaseOrdersPage extends ConsumerWidget {
         ),
       ],
       onCreate: () => pushForm(context, const _PoForm()),
+      onEdit: (o) => pushForm(context, _PoForm(order: o)),
+      canEdit: _orderEditable,
+      onDelete: (o) => ref.read(purchaseOrdersProvider.notifier).delete(o.id),
+      canDelete: _orderEditable,
       extraActions: (o) => [
-        if (o.status != 'RECEIVED' && o.status != 'CONFERRED')
+        if (o.status != 'CANCELLED')
+          PopupMenuItem(
+            value: 'toggle-payment',
+            child: Text(o.paymentStatus == 'PAID' ? 'Marcar pendente' : 'Marcar pago'),
+          ),
+        // Manual: pendente entrega (APPROVED, inclusive já recebido) <-> finalizado (CONFERRED).
+        // O fluxo de NF (Receber/Conferir) também move esse status. Reabrir fica indisponível
+        // depois que o estoque já recebeu a mercadoria — mesma trava do backend.
+        if (o.status == 'APPROVED' || o.status == 'RECEIVED')
+          const PopupMenuItem(value: 'toggle-delivery', child: Text('Finalizar entrega')),
+        if (o.status == 'CONFERRED' && !o.stockReceived)
+          const PopupMenuItem(value: 'toggle-delivery', child: Text('Reabrir entrega')),
+        if (o.status != 'RECEIVED' && o.status != 'CONFERRED' && o.status != 'CANCELLED')
           const PopupMenuItem(value: 'cancel', child: Text('Cancelar')),
       ],
       onAction: (o, action) {
-        if (action == 'cancel') ref.read(purchaseOrdersProvider.notifier).cancel(o.id);
+        switch (action) {
+          case 'cancel':
+            ref.read(purchaseOrdersProvider.notifier).cancel(o.id);
+          case 'toggle-payment':
+            ref
+                .read(purchaseOrdersProvider.notifier)
+                .setPaymentStatus(o.id, o.paymentStatus == 'PAID' ? 'PENDING' : 'PAID');
+          case 'toggle-delivery':
+            ref
+                .read(purchaseOrdersProvider.notifier)
+                .setDeliveryStatus(o.id, o.status == 'CONFERRED' ? 'APPROVED' : 'CONFERRED');
+        }
       },
     );
   }
@@ -127,20 +169,23 @@ class PurchaseHistoryPage extends ConsumerWidget {
 }
 
 class _QuoteForm extends ConsumerStatefulWidget {
-  const _QuoteForm();
+  const _QuoteForm({this.quote});
+
+  final Quote? quote;
 
   @override
   ConsumerState<_QuoteForm> createState() => _QuoteFormState();
 }
 
 class _QuoteFormState extends ConsumerState<_QuoteForm> {
-  var _supplierId = '';
-  final _items = <QuoteLine>[];
+  late var _supplierId = widget.quote?.supplierId ?? '';
+  late final _items = List<QuoteLine>.from(widget.quote?.items ?? const []);
   var _productId = '';
   final _qty = TextEditingController(text: '1');
   final _price = TextEditingController(text: '0');
-  final _discount = TextEditingController(text: '0');
-  final _delivery = TextEditingController(text: '0');
+  late final _notes = TextEditingController(text: widget.quote?.notes ?? '');
+  late final _discount = TextEditingController(text: '${widget.quote?.discountAmount ?? 0}');
+  late final _delivery = TextEditingController(text: '${widget.quote?.deliveryAmount ?? 0}');
   var _draftKey = 0;
   var _saving = false;
 
@@ -161,6 +206,7 @@ class _QuoteFormState extends ConsumerState<_QuoteForm> {
   void dispose() {
     _qty.dispose();
     _price.dispose();
+    _notes.dispose();
     _discount.dispose();
     _delivery.dispose();
     super.dispose();
@@ -171,7 +217,7 @@ class _QuoteFormState extends ConsumerState<_QuoteForm> {
     final suppliers = ref.watch(suppliersProvider).valueOrNull ?? [];
     final products = ref.watch(purchaseLookupsProvider).valueOrNull?.products ?? [];
     return FormScaffold(
-      title: 'Novo orçamento',
+      title: widget.quote == null ? 'Novo orçamento' : 'Editar orçamento',
       saving: _saving,
       onSave: _save,
       child: Column(
@@ -184,6 +230,7 @@ class _QuoteFormState extends ConsumerState<_QuoteForm> {
                 .toList(),
             onChanged: (v) => setState(() => _supplierId = v ?? ''),
           ),
+          ErpField('Observação', _notes),
           KeyedSubtree(
             key: ValueKey(_draftKey),
             child: Column(
@@ -279,15 +326,20 @@ class _QuoteFormState extends ConsumerState<_QuoteForm> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      await ref.read(quotesProvider.notifier).create(
-            Quote(
-              supplierId: _supplierId,
-              notes: '',
-              discountAmount: parseNum(_discount.text),
-              deliveryAmount: parseNum(_delivery.text),
-              items: List.of(_items),
-            ),
-          );
+      final quote = Quote(
+        supplierId: _supplierId,
+        notes: _notes.text.trim(),
+        discountAmount: parseNum(_discount.text),
+        deliveryAmount: parseNum(_delivery.text),
+        items: List.of(_items),
+      );
+      final notifier = ref.read(quotesProvider.notifier);
+      final id = widget.quote?.id;
+      if (id != null) {
+        await notifier.updateQuote(id, quote);
+      } else {
+        await notifier.create(quote);
+      }
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) showError(context, '$e');
@@ -298,17 +350,19 @@ class _QuoteFormState extends ConsumerState<_QuoteForm> {
 }
 
 class _PoForm extends ConsumerStatefulWidget {
-  const _PoForm();
+  const _PoForm({this.order});
+
+  final PurchaseOrder? order;
 
   @override
   ConsumerState<_PoForm> createState() => _PoFormState();
 }
 
 class _PoFormState extends ConsumerState<_PoForm> {
-  var _supplierId = '';
-  var _methodId = '';
-  var _termId = '';
-  final _items = <PurchaseLine>[];
+  late var _supplierId = widget.order?.supplierId ?? '';
+  late var _methodId = widget.order?.paymentMethodId ?? '';
+  late var _termId = widget.order?.paymentTermId ?? '';
+  late final _items = List<PurchaseLine>.from(widget.order?.items ?? const []);
   var _productId = '';
   final _qty = TextEditingController(text: '1');
   final _price = TextEditingController(text: '0');
@@ -328,7 +382,7 @@ class _PoFormState extends ConsumerState<_PoForm> {
     final lookups = ref.watch(purchaseLookupsProvider).valueOrNull;
     final products = lookups?.products ?? [];
     return FormScaffold(
-      title: 'Novo pedido de compra',
+      title: widget.order == null ? 'Novo pedido de compra' : 'Editar pedido de compra',
       saving: _saving,
       onSave: _save,
       child: Column(
@@ -420,17 +474,21 @@ class _PoFormState extends ConsumerState<_PoForm> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      await ref.read(purchaseOrdersProvider.notifier).create(
-            PurchaseOrder(
-              id: '',
-              supplierId: _supplierId,
-              status: '',
-              totalAmount: 0,
-              paymentMethodId: _methodId,
-              paymentTermId: _termId,
-              items: List.of(_items),
-            ),
-          );
+      final order = PurchaseOrder(
+        id: '',
+        supplierId: _supplierId,
+        status: '',
+        totalAmount: 0,
+        paymentMethodId: _methodId,
+        paymentTermId: _termId,
+        items: List.of(_items),
+      );
+      final notifier = ref.read(purchaseOrdersProvider.notifier);
+      if (widget.order != null) {
+        await notifier.updateOrder(widget.order!.id, order);
+      } else {
+        await notifier.create(order);
+      }
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) showError(context, '$e');

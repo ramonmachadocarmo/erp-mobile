@@ -153,3 +153,18 @@ class AssembliesNotifier extends AsyncNotifier<List<Assembly>> {
 final stockUnitsProvider = FutureProvider<List<Unit>>(
   (ref) async => (await ref.watch(stockRepositoryProvider).units()).getOrThrow(),
 );
+
+final movementsProvider =
+    AsyncNotifierProvider<MovementsNotifier, List<StockMovement>>(MovementsNotifier.new);
+
+class MovementsNotifier extends AsyncNotifier<List<StockMovement>> {
+  @override
+  Future<List<StockMovement>> build() =>
+      ref.read(stockRepositoryProvider).movements().then((r) => r.getOrThrow());
+
+  Future<void> reload() async {
+    state = await AsyncValue.guard(
+      () => ref.read(stockRepositoryProvider).movements().then((r) => r.getOrThrow()),
+    );
+  }
+}

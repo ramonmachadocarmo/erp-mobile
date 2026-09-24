@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../app/di.dart';
 import '../../../app/widgets/crud_list.dart';
@@ -9,6 +10,7 @@ import '../../../app/widgets/form_kit.dart';
 import '../../purchasing/presentation/purchasing_providers.dart';
 import '../data/invoicing_repository_impl.dart';
 import '../domain/entities.dart';
+import '../domain/note_attachment.dart';
 
 final invoicingRepositoryProvider = Provider(
   (ref) => InvoicingRepositoryImpl(ref.watch(apiClientProvider)),
@@ -114,47 +116,74 @@ class InvoicesPage extends ConsumerWidget {
           '';
       if (poId.isEmpty) return;
     }
-    var withoutNote = false;
+    var source = NoteSource.file;
     if (direction == 'IN') {
-      final choice = await showDialog<bool>(
+      if (!context.mounted) return;
+      final choice = await showDialog<NoteSource>(
         context: context,
-        builder: (ctx) {
-          var checked = false;
-          return StatefulBuilder(
-            builder: (ctx, setSt) => AlertDialog(
-              title: const Text('Nota de entrada'),
-              content: CheckboxListTile(
-                title: const Text('Entrada sem nota'),
-                value: checked,
-                onChanged: (v) => setSt(() => checked = v ?? false),
-                controlAffinity: ListTileControlAffinity.leading,
+        builder: (ctx) => SimpleDialog(
+          title: const Text('Nota de entrada'),
+          children: [
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, NoteSource.photo),
+              child: const ListTile(
+                leading: Icon(Icons.photo_camera),
+                title: Text('Tirar foto da nota/recibo'),
                 contentPadding: EdgeInsets.zero,
               ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-                FilledButton(onPressed: () => Navigator.pop(ctx, checked), child: const Text('Continuar')),
-              ],
             ),
-          );
-        },
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, NoteSource.file),
+              child: const ListTile(
+                leading: Icon(Icons.attach_file),
+                title: Text('Anexar arquivo (XML, PDF ou imagem)'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, NoteSource.none),
+              child: const ListTile(
+                leading: Icon(Icons.block),
+                title: Text('Entrada sem nota'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ],
+        ),
       );
       if (choice == null) return;
-      withoutNote = choice;
+      source = choice;
     }
+    final withoutNote = source == NoteSource.none;
     String path = '';
     String name = '';
-    if (!withoutNote) {
+    if (source == NoteSource.photo) {
+      try {
+        // Reduz a foto (câmera moderna gera vários MB) — o backend guarda até 8 MB.
+        final shot = await ImagePicker().pickImage(
+          source: ImageSource.camera,
+          imageQuality: 80,
+          maxWidth: 2000,
+          maxHeight: 2000,
+        );
+        if (shot == null) return;
+        path = shot.path;
+        name = shot.name.isEmpty ? 'nota-${DateTime.now().millisecondsSinceEpoch}.jpg' : shot.name;
+      } catch (e) {
+        if (context.mounted) showError(context, 'Não foi possível abrir a câmera: $e');
+        return;
+      }
+    } else if (source == NoteSource.file) {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['xml', 'pdf'],
+        allowedExtensions: noteFileExtensions,
       );
       final file = result?.files.single;
       if (file?.path == null) return;
       path = file!.path!;
       name = file.name;
-      final lower = name.toLowerCase();
-      if (!lower.endsWith('.xml') && !lower.endsWith('.pdf')) {
-        if (context.mounted) showError(context, 'Arquivo deve ser XML ou PDF');
+      if (!isAllowedNoteFile(name)) {
+        if (context.mounted) showError(context, 'Arquivo deve ser XML, PDF ou imagem (JPG/PNG)');
         return;
       }
     }

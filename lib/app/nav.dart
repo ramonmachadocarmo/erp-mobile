@@ -32,6 +32,7 @@ const navGroups = [
       NavItem(path: '/estoque/almoxarifados', label: 'Almoxarifados'),
       NavItem(path: '/estoque/montagem', label: 'Montagem', menuKey: '/producao/montagem'),
       NavItem(path: '/estoque/saldos', label: 'Saldos'),
+      NavItem(path: '/estoque/movimentos', label: 'Movimentos'),
     ],
   ),
   NavGroup(
@@ -57,8 +58,8 @@ const navGroups = [
       NavItem(path: '/logistica/entrada', label: 'Entrada'),
       NavItem(path: '/logistica/conferencia', label: 'Conferência'),
       NavItem(path: '/logistica/separacao', label: 'Separação'),
-      NavItem(path: '/logistica/rotas', label: 'Rotas'),
-      NavItem(path: '/logistica/entrega', label: 'Entrega'),
+      // Rotas e Entrega ficam só na web (planejamento de rota e execução de entrega não
+      // cabem no fluxo do app) — continuam em menuCatalog abaixo, pra matriz de permissões.
     ],
   ),
   NavGroup(
@@ -127,13 +128,11 @@ const menuCatalog = <NavGroup>[
     NavItem(path: '/producao/categorias', label: 'Categorias'),
     NavItem(path: '/producao/produtos', label: 'Produtos'),
     NavItem(path: '/producao/montagem', label: 'Montagem'),
-    NavItem(path: '/producao/pesagem', label: 'Pesagem'),
   ]),
   NavGroup(title: 'Estoque', items: [
     NavItem(path: '/estoque/almoxarifados', label: 'Almoxarifados'),
     NavItem(path: '/estoque/saldos', label: 'Saldos'),
     NavItem(path: '/estoque/movimentos', label: 'Movimentos'),
-    NavItem(path: '/estoque/pesagem-kits', label: 'Pesagem de kits'),
   ]),
   NavGroup(title: 'Vendas', items: [
     NavItem(path: '/vendas/pedidos', label: 'Pedidos'),
@@ -144,10 +143,14 @@ const menuCatalog = <NavGroup>[
     NavItem(path: '/compras/pedidos', label: 'Pedidos'),
     NavItem(path: '/compras/historico', label: 'Histórico'),
   ]),
+  // No web, Logística virou 2 submenus (Entrada: Entrada/Conferência · Saída: Separação/Pesagem de
+  // pedidos/Rotas/Entrega) — NavGroup aqui não tem subgrupo, então fica achatado; a lista de paths
+  // é a mesma.
   NavGroup(title: 'Logística', items: [
     NavItem(path: '/logistica/entrada', label: 'Entrada'),
     NavItem(path: '/logistica/conferencia', label: 'Conferência'),
     NavItem(path: '/logistica/separacao', label: 'Separação'),
+    NavItem(path: '/logistica/pesagem-pedidos', label: 'Pesagem de pedidos'),
     NavItem(path: '/logistica/rotas', label: 'Rotas'),
     NavItem(path: '/logistica/entrega', label: 'Entrega'),
   ]),

@@ -91,7 +91,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         child: Column(
           children: [
             ErpField('Nome', _name, required: true),
-            ErpField('Barras', _barcode),
+            ErpField('Barras', _barcode, scannable: true),
             ErpField('NCM', _ncm),
             ErpDropdown<String>(
               label: 'Tipo',

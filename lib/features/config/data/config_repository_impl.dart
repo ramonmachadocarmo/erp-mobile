@@ -15,15 +15,36 @@ class ConfigRepositoryImpl implements ConfigRepository {
   Future<Result<Address>> lookupCep(String cep) => guardApi(() async {
     final digits = cep.replaceAll(RegExp(r'\D'), '');
     final j = await _client.get('/api/config/cep/$digits');
-    return Address(
-      zip: asString(j, 'zip'),
-      street: asString(j, 'street'),
-      complement: asString(j, 'complement'),
-      district: asString(j, 'district'),
-      city: asString(j, 'city'),
-      state: asString(j, 'state'),
-    );
+    return _addressFromCep(j);
   });
+
+  @override
+  Future<Result<List<Address>>> searchCep({
+    required String state,
+    required String city,
+    required String street,
+    String district = '',
+  }) => guardApi(() async {
+    final query = Uri(
+      queryParameters: {
+        'state': state.trim(),
+        'city': city.trim(),
+        'street': street.trim(),
+        if (district.trim().isNotEmpty) 'district': district.trim(),
+      },
+    ).query;
+    final list = await _client.getList('/api/config/cep?$query');
+    return list.map(_addressFromCep).toList();
+  });
+
+  Address _addressFromCep(Map<String, dynamic> j) => Address(
+    zip: asString(j, 'zip'),
+    street: asString(j, 'street'),
+    complement: asString(j, 'complement'),
+    district: asString(j, 'district'),
+    city: asString(j, 'city'),
+    state: asString(j, 'state'),
+  );
 
   @override
   Future<Result<List<Unit>>> units() => guardApi(() async {

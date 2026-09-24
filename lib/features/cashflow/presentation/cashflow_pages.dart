@@ -5,6 +5,8 @@ import '../../../app/di.dart';
 import '../../../app/widgets/crud_list.dart';
 import '../../../app/widgets/list_filters.dart';
 import '../../../app/widgets/form_kit.dart';
+import '../../config/domain/entities.dart';
+import '../../config/presentation/config_providers.dart';
 import '../data/cashflow_repository_impl.dart';
 import '../domain/entities.dart';
 
@@ -24,6 +26,16 @@ class CashEntriesNotifier extends AsyncNotifier<List<CashEntry>> {
     state = await AsyncValue.guard(
       () => ref.read(cashflowRepositoryProvider).entries().then((r) => r.getOrThrow()),
     );
+  }
+
+  Future<void> createManual(ManualEntry entry) async {
+    (await ref.read(cashflowRepositoryProvider).createManual(entry)).getOrThrow();
+    await reload();
+  }
+
+  Future<void> delete(String id) async {
+    (await ref.read(cashflowRepositoryProvider).deleteEntry(id)).getOrThrow();
+    await reload();
   }
 }
 
@@ -69,7 +81,8 @@ class CashEntriesPage extends ConsumerWidget {
       onRefresh: () => ref.read(cashEntriesProvider.notifier).reload(),
       titleOf: (e) => '${e.direction == 'IN' ? 'Entrada' : 'Saída'} · ${brl(e.amount)}',
       subtitleOf: (e) =>
-          '${e.dueDate} · ${e.status == 'CONFIRMED' ? 'Confirmado' : 'Previsto'} · ${e.paymentMethodCode}',
+          '${e.dueDate} · ${e.status == 'CONFIRMED' ? 'Confirmado' : 'Previsto'} · ${e.paymentMethodCode}'
+          '${e.description.isEmpty ? '' : ' · ${e.description}'}',
       filters: [
         ListFilter<CashEntry>.byValue(
           label: 'Tipo',
@@ -85,7 +98,103 @@ class CashEntriesPage extends ConsumerWidget {
           test: (e, v) => (e.status == 'CONFIRMED') == (v == 'CONFIRMED'),
         ),
       ],
+      // Só lançamento avulso (reference_type MANUAL) é excluído por aqui — o que vem de
+      // pedido de venda/compra (SALE/PURCHASE) é derivado e some junto com o pedido.
+      onCreate: () => pushForm(context, const _ManualEntryForm()),
+      onDelete: (e) => ref.read(cashEntriesProvider.notifier).delete(e.id),
+      canDelete: (e) => e.referenceType == 'MANUAL',
     );
+  }
+}
+
+class _ManualEntryForm extends ConsumerStatefulWidget {
+  const _ManualEntryForm();
+
+  @override
+  ConsumerState<_ManualEntryForm> createState() => _ManualEntryFormState();
+}
+
+class _ManualEntryFormState extends ConsumerState<_ManualEntryForm> {
+  final _form = GlobalKey<FormState>();
+  var _direction = 'OUT';
+  var _dueDate = '';
+  var _methodId = '';
+  final _amount = TextEditingController();
+  final _description = TextEditingController();
+  var _saving = false;
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _description.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final methods = ref.watch(methodsProvider).valueOrNull ?? const <PaymentMethod>[];
+    return Form(
+      key: _form,
+      child: FormScaffold(
+        title: 'Novo lançamento',
+        saving: _saving,
+        onSave: _save,
+        child: Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Registre um lançamento avulso de caixa — não vinculado a nenhum pedido de venda ou compra.',
+              ),
+            ),
+            ErpDropdown<String>(
+              label: 'Tipo',
+              value: _direction,
+              items: const [
+                DropdownMenuItem(value: 'IN', child: Text('Entrada')),
+                DropdownMenuItem(value: 'OUT', child: Text('Saída')),
+              ],
+              onChanged: (v) => setState(() => _direction = v ?? 'OUT'),
+            ),
+            ErpDateField(
+              label: 'Vencimento',
+              value: _dueDate,
+              required: true,
+              onChanged: (v) => setState(() => _dueDate = v),
+            ),
+            ErpField('Valor', _amount, required: true, keyboard: const TextInputType.numberWithOptions(decimal: true)),
+            ErpDropdown<String>(
+              label: 'Forma de pagamento',
+              value: _methodId.isEmpty ? null : _methodId,
+              items: methods.map((m) => DropdownMenuItem(value: m.id, child: Text(m.name))).toList(),
+              onChanged: (v) => setState(() => _methodId = v ?? ''),
+            ),
+            ErpField('Descrição', _description, required: true),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(cashEntriesProvider.notifier).createManual(
+            ManualEntry(
+              direction: _direction,
+              dueDate: _dueDate,
+              amount: parseNum(_amount.text),
+              description: _description.text.trim(),
+              paymentMethodId: _methodId,
+            ),
+          );
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) showError(context, '$e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 }
 

@@ -29,11 +29,20 @@ Contas pessoais criadas após nov/2023 precisam de teste fechado com 12 testador
 
 ## Publicar uma versão
 
-Na raiz do monorepo (`erp/`):
+Duas etapas, na raiz do monorepo (`erp/`). Só a segunda dispara o CI/CD.
 
 ```bash
-make mobile-release VERSION=0.3.0
-cd mobile && git push origin main --tags
+# 1) prepara: calcula a versão, atualiza o pubspec (build number +1), commita só ele e cria a tag — LOCAL
+make mobile-release patch          # 0.2.1 -> 0.2.2   (ou: minor | major | VERSION=0.3.0)
+
+# 2) publica: push do branch + da tag vX.Y.Z = DISPARA o pipeline (testes -> .aab -> Google Play internal)
+make mobile-publish                # pede para digitar o nome da tag; TAG=vX.Y.Z para uma específica
 ```
 
-O `make` atualiza `version:` no `pubspec.yaml` (build number +1), commita só esse arquivo no repo `mobile` e cria a tag `v0.3.0`. O push da tag dispara o deploy para a trilha `internal`.
+Ambos aceitam `ARGS=-n` (dry-run, não altera nada) e `ARGS=-y` (sem perguntar).
+
+- Ao contrário do `ship.sh` (que builda o que está em disco), o CI faz checkout do GitHub: **só entra o que estiver commitado e com push**. O `mobile-release` avisa quando há arquivos sem commit e recusa se o `pubspec.yaml` estiver alterado (ele commita só esse arquivo).
+- Trava anti-downgrade: a versão nova precisa ser maior que qualquer tag existente (local ou remota).
+- `mobile-publish` recusa tag que já exista no remote (não redispararia nada) e empurra **só** a tag indicada, nunca `--tags`.
+- Desfazer a etapa 1, antes de publicar: `cd mobile && git tag -d vX.Y.Z && git reset -q HEAD~1 && git checkout -- pubspec.yaml` (o comando também é impresso pelo script).
+- Depois de publicado não há rollback pela tag: pause a distribuição no Play Console ou publique uma versão maior (`make mobile-release patch && make mobile-publish`).

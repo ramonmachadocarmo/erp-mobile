@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/theme.dart';
+import '../../../../app/widgets/address_form.dart';
 import '../../../../app/widgets/crud_list.dart';
 import '../../../../app/widgets/list_filters.dart';
 import '../../../../app/widgets/form_kit.dart';
@@ -10,9 +11,9 @@ import '../../../../app/widgets/status_chip.dart';
 import '../../../../app/widgets/person_form.dart';
 import '../../../config/domain/entities.dart';
 import '../../../stock/domain/entities.dart';
-import '../../../config/presentation/config_providers.dart';
 import '../../../stock/presentation/stock_providers.dart';
 import '../../domain/entities.dart';
+import '../../domain/kit_swap.dart' as kit_swap;
 import '../sales_providers.dart';
 
 double stockAvail(List<Balance> bals, String productId) {
@@ -90,6 +91,23 @@ String paymentStatusLabel(String s) => s == 'PAID' ? 'Pago' : 'Pendente';
 String _paymentOf(SalesOrder o) =>
     o.paymentStatus.isEmpty ? 'PENDING' : o.paymentStatus;
 
+// "Pendente entrega" (filtro padrão da listagem) = tudo antes de Entregue: o pedido ainda passa
+// por aqui até ser roteirizado e entregue — Entregue, Faturado e Cancelado já saíram do fluxo.
+// Mesmo critério do filtro padrão da listagem web (Orders.tsx).
+const _pendingDeliveryFilter = 'PENDENTE_ENTREGA';
+const _pendingDeliveryStatuses = {
+  'PENDING_RESERVATION',
+  'APPROVED',
+  'PICKING',
+  'PICKED',
+  'UNDELIVERED',
+};
+
+String _fmtDeliveryDate(String d) {
+  final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(d);
+  return m == null ? '—' : '${m[3]}/${m[2]}/${m[1]}';
+}
+
 class SalesOrdersPage extends ConsumerWidget {
   const SalesOrdersPage({super.key, this.forPicking = false, this.pdv = false});
 
@@ -129,7 +147,8 @@ class SalesOrdersPage extends ConsumerWidget {
       titleOf: (o) => customers[o.customerId] ?? o.customerId,
       subtitleOf: (o) => forPicking
           ? '${o.pickingNumber > 0 ? 'Sep. ${sepNo(o.pickingNumber)} · ' : ''}${statusView(o.status).label} · ${brl(o.totalAmount)}\nPedido ${fmtDt(o.createdAt)} · Separação ${fmtDt(o.pickedAt)}'
-          : '${statusView(o.status).label} · ${paymentStatusLabel(o.paymentStatus)}${orderStockShort(o, bals) ? ' · Estoque insuficiente' : ''} · ${brl(o.totalAmount)}',
+          : '${statusView(o.status).label} · ${paymentStatusLabel(o.paymentStatus)}${orderStockShort(o, bals) ? ' · Estoque insuficiente' : ''} · ${brl(o.totalAmount)}'
+              '${o.deliveryDate.isEmpty ? '' : ' · Entrega ${_fmtDeliveryDate(o.deliveryDate)}'}',
       isThreeLine: forPicking,
       searchTextOf: (o) =>
           '${customers[o.customerId] ?? ''} ${orderNo(o.id)} ${sepNo(o.pickingNumber)} ${statusView(o.status).label}',
@@ -137,13 +156,16 @@ class SalesOrdersPage extends ConsumerWidget {
       filters: forPicking
           ? const []
           : [
-              ListFilter<SalesOrder>.byValue(
+              ListFilter<SalesOrder>.custom(
                 label: 'Status',
-                valueOf: (o) => o.status,
                 options: [
+                  const FilterOption(_pendingDeliveryFilter, 'Pendente entrega'),
                   for (final st in _orderStatuses)
                     FilterOption(st, statusView(st).label),
                 ],
+                test: (o, v) => v == _pendingDeliveryFilter
+                    ? _pendingDeliveryStatuses.contains(o.status)
+                    : o.status == v,
               ),
               ListFilter<SalesOrder>.byValue(
                 label: 'Pagamento',
@@ -153,7 +175,19 @@ class SalesOrdersPage extends ConsumerWidget {
                   FilterOption('PENDING', 'Pendente'),
                 ],
               ),
+              ListFilter<SalesOrder>.custom(
+                label: 'Entrega',
+                options: [
+                  const FilterOption('SEM_DATA', 'Sem data'),
+                  for (final d in {for (final o in orders.valueOrNull ?? const []) if (o.deliveryDate.isNotEmpty) o.deliveryDate}.toList()..sort())
+                    FilterOption(d, _fmtDeliveryDate(d)),
+                ],
+                test: (o, v) => v == 'SEM_DATA' ? o.deliveryDate.isEmpty : o.deliveryDate == v,
+              ),
             ],
+      // Filtro padrão: só os pedidos que ainda não saíram do fluxo de entrega (mesmo critério
+      // do web, Orders.tsx) — "Todos" nos outros filtros e em qualquer tela de separação.
+      initialFilters: forPicking ? const {} : const {0: _pendingDeliveryFilter},
       onCreate: forPicking
           ? null
           : () => pushForm(context, _OrderForm(pdv: pdv)),
@@ -223,6 +257,7 @@ class _OrderFormState extends ConsumerState<_OrderForm> {
   var _methodId = '';
   var _termId = '';
   var _address = const Address();
+  var _deliveryDate = '';
   final _items = <OrderLine>[];
   var _saving = false;
 
@@ -292,6 +327,14 @@ class _OrderFormState extends ConsumerState<_OrderForm> {
                 onCleared: () => setState(() => _address = const Address()),
               ),
             ),
+            if (!widget.pdv)
+              ErpDateField(
+                label: 'Data de entrega',
+                value: _deliveryDate,
+                required: true,
+                firstDate: DateTime.now(),
+                onChanged: (v) => setState(() => _deliveryDate = v),
+              ),
             ErpDropdown<String>(
               label: 'Forma',
               value: _methodId.isEmpty ? null : _methodId,
@@ -330,6 +373,12 @@ class _OrderFormState extends ConsumerState<_OrderForm> {
                 ),
               ),
             ),
+            _KitSwapSection(
+              items: _items,
+              onChanged: () => setState(() {}),
+              assemblies: ref.watch(assembliesProvider).valueOrNull ?? const [],
+              products: products,
+            ),
           ],
         ),
       ),
@@ -364,10 +413,7 @@ class _OrderFormState extends ConsumerState<_OrderForm> {
   }
 
   Future<void> _newAddress(Person customer) async {
-    final created = await showDialog<Address>(
-      context: context,
-      builder: (_) => const _AddressDialog(),
-    );
+    final created = await showAddressDialog(context);
     if (created == null || !mounted) return;
     try {
       await ref
@@ -416,6 +462,7 @@ class _OrderFormState extends ConsumerState<_OrderForm> {
               items: List.of(_items),
               address: _address,
               paymentStatus: widget.pdv ? 'PAID' : '',
+              deliveryDate: widget.pdv ? '' : _deliveryDate,
             ),
           );
       if (mounted) Navigator.of(context).pop();
@@ -427,158 +474,282 @@ class _OrderFormState extends ConsumerState<_OrderForm> {
   }
 }
 
-class _AddressDialog extends ConsumerStatefulWidget {
-  const _AddressDialog();
+/// "Itens das cestas": troca um item da receita de um kit por outro sem mudar o preço da
+/// cesta — mesma regra de equivalência de valor (+15% no máximo) do web
+/// (kitSwap.ts/KitSubstitutions.tsx), ver lib/features/sales/domain/kit_swap.dart. [items] é
+/// mutado por índice (mesmo padrão do resto do formulário, ex. LineItemsPage.onDelete) e
+/// [onChanged] dispara o setState do pai.
+class _KitSwapSection extends StatefulWidget {
+  const _KitSwapSection({
+    required this.items,
+    required this.onChanged,
+    required this.assemblies,
+    required this.products,
+  });
+
+  final List<OrderLine> items;
+  final VoidCallback onChanged;
+  final List<Assembly> assemblies;
+  final List<_Product> products;
 
   @override
-  ConsumerState<_AddressDialog> createState() => _AddressDialogState();
+  State<_KitSwapSection> createState() => _KitSwapSectionState();
 }
 
-class _AddressDialogState extends ConsumerState<_AddressDialog> {
-  final _numberFocus = FocusNode();
-  var _searching = false;
+class _KitSwapSectionState extends State<_KitSwapSection> {
+  String? _error;
 
-  final _alias = TextEditingController();
-  final _zip = TextEditingController();
-  final _street = TextEditingController();
-  final _number = TextEditingController();
-  final _complement = TextEditingController();
-  final _district = TextEditingController();
-  final _city = TextEditingController();
-  final _state = TextEditingController();
+  _Product? _prod(String id) => widget.products.where((p) => p.id == id).firstOrNull;
 
-  @override
-  void dispose() {
-    _alias.dispose();
-    _zip.dispose();
-    _street.dispose();
-    _number.dispose();
-    _complement.dispose();
-    _district.dispose();
-    _city.dispose();
-    _state.dispose();
-    _numberFocus.dispose();
-    super.dispose();
+  /// Componentes efetivos de uma linha de kit: os próprios (se já customizada) ou a receita
+  /// padrão (quantidade do item × quantidade de cestas da linha).
+  List<OrderItemComponent> _effective(OrderLine line, Assembly assembly) {
+    if (line.components != null && line.components!.isNotEmpty) return line.components!;
+    return [
+      for (final ai in assembly.items)
+        OrderItemComponent(productId: ai.productId, quantity: ai.quantity * line.quantity),
+    ];
   }
 
-  Future<void> _searchCep() async {
-    if (_searching) return;
-    final digits = _zip.text.replaceAll(RegExp(r'\D'), '');
-    if (digits.length != 8) {
-      showError(context, 'Informe um CEP com 8 dígitos');
+  /// Valor que a receita original previa para esse slot (quantidade da receita × cestas × preço
+  /// de venda) — o orçamento contra o qual toda troca nesse slot é medida, então trocas
+  /// repetidas na mesma linha nunca acumulam desvio de arredondamento.
+  double _slotBase(OrderLine line, Assembly assembly, int compIndex) {
+    if (compIndex >= assembly.items.length) return 0;
+    final ai = assembly.items[compIndex];
+    return ai.quantity * line.quantity * (_prod(ai.productId)?.salePrice ?? 0);
+  }
+
+  void _replaceLine(int lineIndex, List<OrderItemComponent> comps) {
+    final cur = widget.items[lineIndex];
+    widget.items[lineIndex] = OrderLine(
+      productId: cur.productId,
+      quantity: cur.quantity,
+      unitPrice: cur.unitPrice,
+      components: comps,
+    );
+    widget.onChanged();
+  }
+
+  void _resetLine(int lineIndex) {
+    setState(() => _error = null);
+    _replaceLine(lineIndex, const []);
+  }
+
+  Future<void> _swap(int lineIndex, OrderLine line, Assembly assembly, int compIndex) async {
+    final comps = List<OrderItemComponent>.from(_effective(line, assembly));
+    final picked = await showDialog<_Product>(
+      context: context,
+      builder: (_) => _ProductPickerDialog(products: widget.products),
+    );
+    if (picked == null || !mounted) return;
+    final original = compIndex < assembly.items.length ? assembly.items[compIndex] : null;
+    // Voltar pro próprio produto da receita restaura a quantidade da receita.
+    if (original != null && original.productId == picked.id) {
+      comps[compIndex] = OrderItemComponent(
+        productId: picked.id,
+        quantity: double.parse((original.quantity * line.quantity).toStringAsFixed(4)),
+      );
+      setState(() => _error = null);
+      _replaceLine(lineIndex, comps);
       return;
     }
-    setState(() => _searching = true);
-    final result = await ref.read(configRepositoryProvider).lookupCep(digits);
-    if (!mounted) return;
-    setState(() => _searching = false);
-    result.when(
-      ok: (a) {
-        // Keep whatever the user already typed when the lookup has no value.
-        String pick(String found, TextEditingController c) =>
-            found.isNotEmpty ? found : c.text;
-        _zip.text = pick(a.zip, _zip);
-        _street.text = pick(a.street, _street);
-        _complement.text = pick(a.complement, _complement);
-        _district.text = pick(a.district, _district);
-        _city.text = pick(a.city, _city);
-        _state.text = pick(a.state, _state);
-        _numberFocus.requestFocus();
-      },
-      err: (f) => showError(context, f.message),
-    );
+    final target = _slotBase(line, assembly, compIndex);
+    final eq = kit_swap.equivalentQuantity(target, picked.salePrice, kit_swap.qtyStep(picked.saleUom));
+    if (!eq.ok) {
+      setState(() => _error = '${picked.sku} — ${picked.name}: ${eq.reason}');
+      return;
+    }
+    setState(() => _error = null);
+    comps[compIndex] = OrderItemComponent(productId: picked.id, quantity: eq.quantity);
+    _replaceLine(lineIndex, comps);
+  }
+
+  void _updateQty(int lineIndex, OrderLine line, Assembly assembly, int compIndex, double qty) {
+    final comps = List<OrderItemComponent>.from(_effective(line, assembly));
+    final price = _prod(comps[compIndex].productId)?.salePrice ?? 0;
+    final base = _slotBase(line, assembly, compIndex);
+    if (!kit_swap.withinPremium(qty, price, base)) {
+      final pct = (kit_swap.maxPremium * 100).round();
+      setState(() => _error = 'Quantidade acima do permitido: o item pode custar no máximo $pct% a mais que o item original da cesta.');
+      return;
+    }
+    setState(() => _error = null);
+    comps[compIndex] = OrderItemComponent(productId: comps[compIndex].productId, quantity: qty);
+    _replaceLine(lineIndex, comps);
   }
 
   @override
   Widget build(BuildContext context) {
+    final assemblyByProduct = {
+      for (final a in widget.assemblies)
+        if (a.productId.isNotEmpty) a.productId: a,
+    };
+    final kitLineIndexes = [
+      for (var i = 0; i < widget.items.length; i++)
+        if (assemblyByProduct.containsKey(widget.items[i].productId)) i,
+    ];
+    if (kitLineIndexes.isEmpty) return const SizedBox.shrink();
+    final pct = (kit_swap.maxPremium * 100).round();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Itens das cestas', style: TextStyle(fontWeight: FontWeight.w700)),
+              Text(
+                'Troque um item da receita por outro sem alterar o preço da cesta — a quantidade '
+                'do substituto é calculada pelo valor equivalente de venda, e o item novo pode '
+                'custar no máximo $pct% a mais que o item trocado.',
+                style: const TextStyle(color: erpMuted, fontSize: 12),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(_error!, style: const TextStyle(color: erpDanger)),
+              ],
+              for (final lineIndex in kitLineIndexes)
+                _kitLineCard(lineIndex, widget.items[lineIndex], assemblyByProduct[widget.items[lineIndex].productId]!),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _kitLineCard(int lineIndex, OrderLine line, Assembly assembly) {
+    final comps = _effective(line, assembly);
+    final customized = line.components != null && line.components!.isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${assembly.code} — ${assembly.name} × ${line.quantity}',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (customized)
+                TextButton(
+                  onPressed: () => _resetLine(lineIndex),
+                  child: const Text('Restaurar'),
+                ),
+            ],
+          ),
+          for (var ci = 0; ci < comps.length; ci++)
+            _componentRow(lineIndex, line, assembly, ci, comps[ci]),
+        ],
+      ),
+    );
+  }
+
+  Widget _componentRow(int lineIndex, OrderLine line, Assembly assembly, int compIndex, OrderItemComponent comp) {
+    final p = _prod(comp.productId);
+    final price = p?.salePrice ?? 0;
+    final qtyController = TextEditingController(text: _fmtQty(comp.quantity));
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            flex: 3,
+            child: InkWell(
+              onTap: () => _swap(lineIndex, line, assembly, compIndex),
+              child: InputDecorator(
+                decoration: const InputDecoration(labelText: 'Item', isDense: true),
+                child: Text(p == null ? comp.productId : '${p.sku} — ${p.name}', overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 2,
+            child: TextFormField(
+              key: ValueKey('$lineIndex-$compIndex-${comp.quantity}'),
+              controller: qtyController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(labelText: 'Qtd', isDense: true, suffixText: p == null || p.saleUom.isEmpty ? null : p.saleUom),
+              onFieldSubmitted: (v) => _updateQty(lineIndex, line, assembly, compIndex, parseNum(v, comp.quantity)),
+              onTapOutside: (_) => _updateQty(lineIndex, line, assembly, compIndex, parseNum(qtyController.text, comp.quantity)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 72,
+            child: Text(
+              price > 0 ? brl(comp.quantity * price) : '—',
+              textAlign: TextAlign.right,
+              style: const TextStyle(color: erpMuted, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmtQty(double n) => n == n.roundToDouble() ? n.toInt().toString() : n.toString();
+}
+
+class _ProductPickerDialog extends StatefulWidget {
+  const _ProductPickerDialog({required this.products});
+
+  final List<_Product> products;
+
+  @override
+  State<_ProductPickerDialog> createState() => _ProductPickerDialogState();
+}
+
+class _ProductPickerDialogState extends State<_ProductPickerDialog> {
+  var _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final q = normalizeSearch(_query.trim());
+    final shown = q.isEmpty
+        ? widget.products
+        : widget.products.where((p) => normalizeSearch('${p.sku} ${p.name}').contains(q)).toList();
     return AlertDialog(
-      title: const Text('Novo endereço'),
-      content: SingleChildScrollView(
+      title: const Text('Trocar item'),
+      content: SizedBox(
+        width: double.maxFinite,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
-              controller: _alias,
-              decoration: const InputDecoration(labelText: 'Alias'),
               autofocus: true,
+              decoration: const InputDecoration(hintText: 'Buscar produto', prefixIcon: Icon(Icons.search)),
+              onChanged: (v) => setState(() => _query = v),
             ),
-            TextField(
-              controller: _zip,
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => _searchCep(),
-              onChanged: (v) {
-                if (v.replaceAll(RegExp(r'\D'), '').length == 8) _searchCep();
-              },
-              decoration: InputDecoration(
-                labelText: 'CEP',
-                suffixIcon: _searching
-                    ? const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    : IconButton(
-                        icon: const Icon(Icons.search),
-                        tooltip: 'Buscar CEP',
-                        onPressed: _searchCep,
-                      ),
-              ),
-            ),
-            TextField(
-              controller: _street,
-              decoration: const InputDecoration(labelText: 'Logradouro'),
-            ),
-            TextField(
-              controller: _number,
-              focusNode: _numberFocus,
-              decoration: const InputDecoration(labelText: 'Número'),
-            ),
-            TextField(
-              controller: _complement,
-              decoration: const InputDecoration(labelText: 'Complemento'),
-            ),
-            TextField(
-              controller: _district,
-              decoration: const InputDecoration(labelText: 'Bairro'),
-            ),
-            TextField(
-              controller: _city,
-              decoration: const InputDecoration(labelText: 'Cidade'),
-            ),
-            TextField(
-              controller: _state,
-              decoration: const InputDecoration(labelText: 'UF'),
-              textCapitalization: TextCapitalization.characters,
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 320,
+              child: shown.isEmpty
+                  ? const Center(child: Text('Nenhum produto', style: TextStyle(color: erpMuted)))
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: shown.length,
+                      itemBuilder: (_, i) {
+                        final p = shown[i];
+                        return ListTile(
+                          title: Text(p.name),
+                          subtitle: Text(p.sku),
+                          onTap: () => Navigator.pop(context, p),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar'),
-        ),
-        TextButton(
-          onPressed: () {
-            final a = Address(
-              alias: _alias.text.trim(),
-              zip: _zip.text.trim(),
-              street: _street.text.trim(),
-              number: _number.text.trim(),
-              complement: _complement.text.trim(),
-              district: _district.text.trim(),
-              city: _city.text.trim(),
-              state: _state.text.trim().toUpperCase(),
-            );
-            if (a.alias.isEmpty && a.street.isEmpty) return;
-            Navigator.pop(context, a);
-          },
-          child: const Text('Salvar'),
-        ),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
       ],
     );
   }
@@ -589,6 +760,7 @@ typedef _Product = ({
   String sku,
   String name,
   String barcode,
+  String saleUom,
   double salePrice,
 });
 

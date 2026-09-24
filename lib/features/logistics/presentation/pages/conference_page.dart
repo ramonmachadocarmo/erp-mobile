@@ -6,6 +6,8 @@ import '../../../../app/theme.dart';
 import '../../../../app/widgets/barcode_scan_page.dart';
 import '../../../../app/widgets/crud_list.dart';
 import '../../../../app/widgets/form_kit.dart';
+import '../../../../core/scan_code.dart';
+import '../../../stock/domain/product_lookup.dart';
 import '../../../../app/widgets/status_chip.dart';
 import '../../../invoicing/presentation/invoicing_pages.dart';
 import '../../../purchasing/domain/entities.dart';
@@ -66,36 +68,35 @@ class _ConferencePageState extends ConsumerState<ConferencePage> {
     return list.where((p) => p.id == id).firstOrNull;
   }
 
-  void _add(String productId, double qty) {
+  bool _add(String productId, double qty) {
     final o = _order;
-    if (o == null) return;
+    if (o == null) return false;
     if (!o.items.any((i) => i.productId == productId)) {
       setState(() => _error = 'Produto não está no pedido');
-      return;
+      return false;
     }
     setState(() {
       _counts[productId] = (_counts[productId] ?? 0) + qty;
       _error = '';
     });
+    return true;
   }
 
-  Future<void> _scan() async {
-    final code = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const BarcodeScanPage()),
-    );
-    if (code == null || code.isEmpty) return;
-    final t = code.trim();
-    final m = RegExp(r'^(.+?)\s*[,;]\s*(\d+(?:[.,]\d+)?)\s*$').firstMatch(t);
-    final q = (m?.group(1) ?? t).trim().toLowerCase();
-    final qty = m == null ? 1.0 : double.tryParse(m.group(2)!.replaceAll(',', '.')) ?? 1;
-    final products = ref.read(productsProvider).valueOrNull ?? [];
-    final p = products.where((x) => x.barcode.toLowerCase() == q || x.sku.toLowerCase() == q).firstOrNull;
+  /// Trata uma leitura da câmera (modo contínuo) e devolve o resultado para a faixa sobre a câmera.
+  Future<ScanFeedback> _onScanned(String raw) async {
+    final scan = parseScanCode(raw);
+    if (scan == null) return const ScanFeedback.error('Código inválido');
+    final p = findProductByCode(ref.read(productsProvider).valueOrNull ?? [], scan.code);
     if (p == null) {
       setState(() => _error = 'Código não encontrado');
-      return;
+      return ScanFeedback.error('Código não encontrado: ${scan.code}');
     }
-    _add(p.id, qty);
+    if (!_add(p.id, scan.quantity)) return ScanFeedback.error(_error);
+    final ordered = _order?.items.where((i) => i.productId == p.id).fold(0.0, (n, i) => n + i.quantity) ?? 0;
+    return ScanFeedback.ok('${p.name}: ${_qty(_counts[p.id] ?? 0)}/${_qty(ordered)}');
   }
+
+  Future<void> _scan() => scanBarcodes(context, onCode: _onScanned, title: 'Conferência');
 
   Future<void> _confirm() async {
     final o = _order;

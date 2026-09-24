@@ -240,4 +240,23 @@ class StockRepositoryImpl implements StockRepository {
         final list = await _client.getList('/api/config/units');
         return list.map(unitFrom).toList();
       });
+
+  @override
+  Future<Result<List<StockMovement>>> movements() => guardApi(() async {
+        final list = await _client.getList('/api/stock/movements');
+        return list
+            .map(
+              (j) => StockMovement(
+                id: asString(j, 'id'),
+                productId: asString(j, 'product_id'),
+                warehouseId: asString(j, 'warehouse_id'),
+                movementType: asString(j, 'movement_type'),
+                subtype: asString(j, 'subtype'),
+                quantity: asDouble(j, 'quantity'),
+                referenceDocType: asString(j, 'reference_doc_type'),
+                createdAt: asString(j, 'created_at'),
+              ),
+            )
+            .toList();
+      });
 }

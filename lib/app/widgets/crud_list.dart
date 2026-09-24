@@ -23,12 +23,15 @@ class CrudList<T> extends ConsumerStatefulWidget {
     this.onCreate,
     this.onEdit,
     this.onDelete,
+    this.canEdit,
+    this.canDelete,
     this.extraActions,
     this.onAction,
     this.onTap,
     this.onDoubleTap,
     this.isThreeLine = false,
     this.filters = const [],
+    this.initialFilters = const {},
     this.searchTextOf,
     this.searchable = true,
     this.itemBuilder,
@@ -42,12 +45,19 @@ class CrudList<T> extends ConsumerStatefulWidget {
   final VoidCallback? onCreate;
   final void Function(T item)? onEdit;
   final Future<void> Function(T item)? onDelete;
+  /// Per-item gate on top of [onEdit] — e.g. a quote can only be edited while OPEN. Missing
+  /// means "always", same as the role-level gate already applied to [onEdit] as a whole.
+  final bool Function(T item)? canEdit;
+  final bool Function(T item)? canDelete;
   final List<PopupMenuItem<String>> Function(T item)? extraActions;
   final void Function(T item, String action)? onAction;
   final void Function(T item)? onTap;
   final void Function(T item)? onDoubleTap;
   final bool isThreeLine;
   final List<ListFilter<T>> filters;
+  /// Seleção inicial dos filtros por índice (mesma chave de [ListFilterBar.selected]) —
+  /// ex. abrir a lista já filtrada em "pendente entrega". Ausente/vazio = "Todos" em todos.
+  final Map<int, String> initialFilters;
   final String Function(T item)? searchTextOf;
   final bool searchable;
   final Widget Function(BuildContext context, T item)? itemBuilder;
@@ -61,7 +71,7 @@ class _CrudListState<T> extends ConsumerState<CrudList<T>> {
   final _search = TextEditingController();
   var _query = '';
   // Picked value per filter index; '' or missing means "Todos".
-  final _selected = <int, String>{};
+  late final _selected = Map<int, String>.from(widget.initialFilters);
 
   @override
   void dispose() {
@@ -196,15 +206,16 @@ class _CrudListState<T> extends ConsumerState<CrudList<T>> {
     Future<void> Function(T item)? onDelete,
   ) async {
     final extras = widget.extraActions?.call(item) ?? const <PopupMenuItem<String>>[];
-    if (onEdit == null && onDelete == null && extras.isEmpty) return;
+    final showEdit = onEdit != null && (widget.canEdit?.call(item) ?? true);
+    final showDelete = onDelete != null && (widget.canDelete?.call(item) ?? true);
+    if (!showEdit && !showDelete && extras.isEmpty) return;
     final action = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx, pos.dy),
       items: [
-        if (onEdit != null)
-          const PopupMenuItem(value: 'edit', child: Text('Editar')),
+        if (showEdit) const PopupMenuItem(value: 'edit', child: Text('Editar')),
         ...extras,
-        if (onDelete != null)
+        if (showDelete)
           const PopupMenuItem(
             value: 'delete',
             child: Text('Excluir', style: TextStyle(color: erpDanger)),

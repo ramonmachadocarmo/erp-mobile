@@ -18,6 +18,7 @@ class SalesOrder {
     this.address = const Address(),
     this.deliveryNote = '',
     this.paymentStatus = '',
+    this.deliveryDate = '',
   });
 
   final String id;
@@ -38,6 +39,10 @@ class SalesOrder {
 
   /// Only sent on create: PDV counter sales are collected on the spot (PAID).
   final String paymentStatus;
+
+  /// Dia que o cliente espera o pedido (YYYY-MM-DD, "" = não informado). O planejamento de
+  /// rotas (web) agrupa as entregas por essa data — ver docs/MOBILE_PARITY_PLAN.md.
+  final String deliveryDate;
 }
 
 class PickLine {
@@ -52,21 +57,36 @@ class PickLine {
   final double quantity;
 }
 
+/// Substitui um item da receita de um kit numa linha do pedido — ver kit_swap.dart. Ausente
+/// (ou vazio) significa "usa a receita padrão cadastrada em Estoque -> Montagem".
+class OrderItemComponent {
+  const OrderItemComponent({required this.productId, required this.quantity});
+
+  final String productId;
+  final double quantity;
+
+  Map<String, dynamic> toJson() => {'product_id': productId, 'quantity': quantity};
+}
+
 class OrderLine {
   const OrderLine({
     required this.productId,
     required this.quantity,
     required this.unitPrice,
+    this.components,
   });
 
   final String productId;
   final double quantity;
   final double unitPrice;
+  final List<OrderItemComponent>? components;
 
   Map<String, dynamic> toJson() => {
     'product_id': productId,
     'quantity': quantity,
     'unit_price': unitPrice,
+    if (components != null && components!.isNotEmpty)
+      'components': components!.map((c) => c.toJson()).toList(),
   };
 }
 
@@ -81,116 +101,10 @@ class SalesLookups {
 
   final List<Person> customers;
   final List<
-    ({String id, String sku, String name, String barcode, double salePrice})
+    ({String id, String sku, String name, String barcode, String saleUom, double salePrice})
   >
   products;
   final List<({String id, String code, String name})> warehouses;
   final List<PaymentMethod> methods;
   final List<PaymentTerm> terms;
-}
-
-class DeliveryPlan {
-  const DeliveryPlan({
-    required this.id,
-    required this.status,
-    this.vehicleName = '',
-    this.vehicleCode = '',
-    this.centerName = '',
-    this.centerLat = 0,
-    this.centerLng = 0,
-    this.distanceM = 0,
-    this.durationS = 0,
-    this.weightKg = 0,
-    this.volumeM3 = 0,
-    this.occupancyPct = 0,
-    this.stops = const [],
-    this.options = const [],
-  });
-
-  final String id;
-  final String status;
-  final String vehicleName;
-  final String vehicleCode;
-  final String centerName;
-  final double centerLat;
-  final double centerLng;
-  final double distanceM;
-  final double durationS;
-  final double weightKg;
-  final double volumeM3;
-  final double occupancyPct;
-  final List<DeliveryStop> stops;
-  final List<RouteOption> options;
-}
-
-class DeliveryStop {
-  const DeliveryStop({
-    required this.seq,
-    required this.salesOrderId,
-    this.customerId = '',
-    this.address = const Address(),
-    this.distanceM = 0,
-    this.durationS = 0,
-    this.lat = 0,
-    this.lng = 0,
-  });
-
-  final int seq;
-  final String salesOrderId;
-  final String customerId;
-  final Address address;
-  final double distanceM;
-  final double durationS;
-  final double lat;
-  final double lng;
-}
-
-class RouteOption {
-  const RouteOption({
-    required this.label,
-    this.distanceM = 0,
-    this.durationS = 0,
-    this.stops = const [],
-    this.selected = false,
-  });
-
-  final String label;
-  final double distanceM;
-  final double durationS;
-  final List<DeliveryStop> stops;
-  final bool selected;
-}
-
-class PlanResult {
-  const PlanResult({this.plans = const [], this.skipped = const []});
-
-  final List<DeliveryPlan> plans;
-  final List<SkippedStop> skipped;
-}
-
-class SkippedStop {
-  const SkippedStop({required this.orderId, required this.reason});
-
-  final String orderId;
-  final String reason;
-}
-
-class DeliveryCandidate {
-  const DeliveryCandidate({
-    required this.id,
-    required this.customerId,
-    this.address = const Address(),
-    this.weightKg = 0,
-    this.volumeM3 = 0,
-    this.hasGeo = false,
-    this.planned = false,
-  });
-
-  final String id;
-  final String customerId;
-  final Address address;
-  final double weightKg;
-  final double volumeM3;
-  final bool hasGeo;
-  final bool planned;
 }

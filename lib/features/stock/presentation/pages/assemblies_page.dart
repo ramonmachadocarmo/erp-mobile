@@ -65,7 +65,9 @@ class _AssemblyFormState extends ConsumerState<_AssemblyForm> {
         onSave: _save,
         child: Column(
           children: [
-            ErpField('Código', _code, required: true),
+            // Em branco na criação, o backend atribui um código sequencial — só fica
+            // obrigatório ao editar (mesma regra do CodeInput no web).
+            ErpField('Código', _code, required: widget.assembly != null),
             ErpField('Nome', _name, required: true),
             ErpDropdown<String>(
               label: 'Produto final',

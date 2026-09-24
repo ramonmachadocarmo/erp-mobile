@@ -66,7 +66,9 @@ class _WarehouseFormState extends ConsumerState<_WarehouseForm> {
         onSave: _save,
         child: Column(
           children: [
-            ErpField('Código', _code, required: true),
+            // Em branco na criação, o backend atribui um código sequencial — só fica
+            // obrigatório ao editar (mesma regra do CodeInput no web).
+            ErpField('Código', _code, required: widget.warehouse != null),
             ErpField('Nome', _name, required: true),
           ],
         ),

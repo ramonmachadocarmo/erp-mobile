@@ -28,6 +28,16 @@ class QuotesNotifier extends AsyncNotifier<List<Quote>> {
     await reload();
   }
 
+  Future<void> updateQuote(String id, Quote q) async {
+    (await ref.read(purchasingRepositoryProvider).updateQuote(id, q)).getOrThrow();
+    await reload();
+  }
+
+  Future<void> deleteQuote(String id) async {
+    (await ref.read(purchasingRepositoryProvider).deleteQuote(id)).getOrThrow();
+    await reload();
+  }
+
   Future<void> convert(String id, String methodId, String termId) async {
     (await ref.read(purchasingRepositoryProvider).convertQuote(id, methodId: methodId, termId: termId))
         .getOrThrow();
@@ -52,6 +62,26 @@ class PurchaseOrdersNotifier extends AsyncNotifier<List<PurchaseOrder>> {
 
   Future<void> create(PurchaseOrder o) async {
     (await ref.read(purchasingRepositoryProvider).createOrder(o)).getOrThrow();
+    await reload();
+  }
+
+  Future<void> updateOrder(String id, PurchaseOrder o) async {
+    (await ref.read(purchasingRepositoryProvider).updateOrder(id, o)).getOrThrow();
+    await reload();
+  }
+
+  Future<void> delete(String id) async {
+    (await ref.read(purchasingRepositoryProvider).deleteOrder(id)).getOrThrow();
+    await reload();
+  }
+
+  Future<void> setPaymentStatus(String id, String status) async {
+    (await ref.read(purchasingRepositoryProvider).setPaymentStatus(id, status)).getOrThrow();
+    await reload();
+  }
+
+  Future<void> setDeliveryStatus(String id, String status) async {
+    (await ref.read(purchasingRepositoryProvider).setDeliveryStatus(id, status)).getOrThrow();
     await reload();
   }
 

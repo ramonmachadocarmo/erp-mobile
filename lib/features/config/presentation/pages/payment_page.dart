@@ -101,7 +101,9 @@ class _MethodFormState extends ConsumerState<_MethodForm> {
         onSave: _save,
         child: Column(
           children: [
-            ErpField('Código', _code, required: true),
+            // Em branco na criação, o backend atribui um código sequencial — só fica
+            // obrigatório ao editar (mesma regra do CodeInput no web).
+            ErpField('Código', _code, required: widget.method != null),
             ErpField('Nome', _name, required: true),
           ],
         ),
@@ -168,7 +170,9 @@ class _TermFormState extends ConsumerState<_TermForm> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ErpField('Código', _code, required: true),
+            // Em branco na criação, o backend atribui um código sequencial — só fica
+            // obrigatório ao editar (mesma regra do CodeInput no web).
+            ErpField('Código', _code, required: widget.term != null),
             ErpField('Nome', _name, required: true),
             const Text('Parcelas (soma = 100%)', style: TextStyle(color: erpMuted)),
             const SizedBox(height: 8),
