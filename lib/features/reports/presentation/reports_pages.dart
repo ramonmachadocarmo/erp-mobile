@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/di.dart';
 import '../../../app/theme.dart';
@@ -36,6 +37,10 @@ final customerRankingReportProvider = FutureProvider.autoDispose.family<ReportRo
   (ref, r) => ref.read(reportsRepositoryProvider).customerRanking(from: r.from, to: r.to).then((x) => x.getOrThrow()),
 );
 
+final customerDetailProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>(
+  (ref, id) => ref.read(reportsRepositoryProvider).customerDetail(id).then((x) => x.getOrThrow()),
+);
+
 final forecastReportProvider =
     FutureProvider.autoDispose.family<ReportRows, ({int coverageWeeks, double safetyPercent, int lookbackWeeks})>(
   (ref, p) => ref
@@ -45,6 +50,21 @@ final forecastReportProvider =
 );
 
 String _dash(String s) => s.isEmpty ? '—' : s;
+
+int? _daysAgo(String iso) {
+  if (iso.isEmpty) return null;
+  final d = DateTime.tryParse(iso);
+  if (d == null) return null;
+  final days = DateTime.now().difference(d).inDays;
+  return days < 0 ? 0 : days;
+}
+
+String _lastOrderLabel(String iso) {
+  final days = _daysAgo(iso);
+  if (days == null) return '—';
+  final rel = days == 0 ? 'hoje' : 'há $days dia${days == 1 ? '' : 's'}';
+  return '${fmtDt(iso).split(' ').first} ($rel)';
+}
 
 // -------------------------------------------------------------------- Kits
 
@@ -259,6 +279,7 @@ class _CrmCustomersPageState extends ConsumerState<CrmCustomersPage> {
     final orders = rows.fold<double>(0, (n, r) => n + asDouble(r, 'order_count'));
     final spent = rows.fold<double>(0, (n, r) => n + asDouble(r, 'total_amount'));
     final cancelled = rows.fold<double>(0, (n, r) => n + asDouble(r, 'cancelled_count'));
+    final overdue = rows.fold<double>(0, (n, r) => n + asDouble(r, 'overdue_amount'));
     return Column(
       children: [
         ParamsCard(
@@ -289,6 +310,7 @@ class _CrmCustomersPageState extends ConsumerState<CrmCustomersPage> {
                 StatCard(label: 'Pedidos', value: fmtQty(orders)),
                 StatCard(label: 'Valor gasto', value: brl(spent)),
                 StatCard(label: 'Pedidos cancelados', value: fmtQty(cancelled)),
+                StatCard(label: 'Em atraso', value: brl(overdue), negative: overdue > 0),
               ],
             ),
           ),
@@ -300,10 +322,71 @@ class _CrmCustomersPageState extends ConsumerState<CrmCustomersPage> {
             titleOf: (r) => asString(r, 'customer_name'),
             subtitleOf: (r) =>
                 'Pedidos ${fmtQty(asDouble(r, 'order_count'))} · Total ${brl(asDouble(r, 'total_amount'))} · Ticket médio ${brl(asDouble(r, 'average_ticket'))}\n'
-                'Cancelados: ${fmtQty(asDouble(r, 'cancelled_count'))}',
+                'Cancelados: ${fmtQty(asDouble(r, 'cancelled_count'))} · Em atraso: ${brl(asDouble(r, 'overdue_amount'))}\n'
+                'Última compra: ${_lastOrderLabel(asString(r, 'last_order_at'))}',
+            onTap: (r) => context.push('/crm/${asString(r, 'customer_id')}'),
           ),
         ),
       ],
+    );
+  }
+}
+
+class CrmCustomerDetailPage extends ConsumerWidget {
+  const CrmCustomerDetailPage({super.key, required this.customerId});
+
+  final String customerId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(customerDetailProvider(customerId));
+    return Scaffold(
+      appBar: AppBar(title: Text(value.valueOrNull != null ? asString(value.value!, 'customer_name') : 'Cliente')),
+      body: value.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text(errText(e), style: const TextStyle(color: erpDanger))),
+        data: (d) {
+          final orders = asMapList(d['orders']);
+          final overdue = asDouble(d, 'overdue_amount');
+          return RefreshIndicator(
+            onRefresh: () async => ref.invalidate(customerDetailProvider(customerId)),
+            child: ListView(
+              padding: const EdgeInsets.all(12),
+              children: [
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    StatCard(label: 'Pedidos', value: fmtQty(asDouble(d, 'order_count'))),
+                    StatCard(label: 'Valor gasto', value: brl(asDouble(d, 'total_amount'))),
+                    StatCard(label: 'Ticket médio', value: brl(asDouble(d, 'average_ticket'))),
+                    StatCard(label: 'Pedidos cancelados', value: fmtQty(asDouble(d, 'cancelled_count'))),
+                    StatCard(label: 'Em atraso', value: brl(overdue), negative: overdue > 0),
+                    StatCard(label: 'Última compra', value: _lastOrderLabel(asString(d, 'last_order_at'))),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (orders.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 24),
+                    child: Center(child: Text('Nenhum pedido encontrado.', style: TextStyle(color: erpMuted))),
+                  )
+                else
+                  for (final o in orders)
+                    Card(
+                      color: erpPanel,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        title: Text('${fmtDt(asString(o, 'created_at'))} — ${statusView(asString(o, 'status')).label}'),
+                        subtitle: Text('${_dash(asString(o, 'item_summary'))}\n${brl(asDouble(o, 'total_amount'))}'),
+                        isThreeLine: true,
+                      ),
+                    ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }

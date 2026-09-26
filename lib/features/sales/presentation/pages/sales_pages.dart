@@ -144,14 +144,14 @@ class SalesOrdersPage extends ConsumerWidget {
           ref.read(balancesProvider.notifier).reload(),
         ]);
       },
-      titleOf: (o) => customers[o.customerId] ?? o.customerId,
+      titleOf: (o) => 'Nº ${o.number} — ${customers[o.customerId] ?? o.customerId}',
       subtitleOf: (o) => forPicking
           ? '${o.pickingNumber > 0 ? 'Sep. ${sepNo(o.pickingNumber)} · ' : ''}${statusView(o.status).label} · ${brl(o.totalAmount)}\nPedido ${fmtDt(o.createdAt)} · Separação ${fmtDt(o.pickedAt)}'
           : '${statusView(o.status).label} · ${paymentStatusLabel(o.paymentStatus)}${orderStockShort(o, bals) ? ' · Estoque insuficiente' : ''} · ${brl(o.totalAmount)}'
               '${o.deliveryDate.isEmpty ? '' : ' · Entrega ${_fmtDeliveryDate(o.deliveryDate)}'}',
       isThreeLine: forPicking,
       searchTextOf: (o) =>
-          '${customers[o.customerId] ?? ''} ${orderNo(o.id)} ${sepNo(o.pickingNumber)} ${statusView(o.status).label}',
+          '${customers[o.customerId] ?? ''} ${o.number} ${orderNo(o.id)} ${sepNo(o.pickingNumber)} ${statusView(o.status).label}',
       // The separation list is already narrowed to a few statuses.
       filters: forPicking
           ? const []
@@ -386,7 +386,7 @@ class _OrderFormState extends ConsumerState<_OrderForm> {
                     final p = products
                         .where((x) => x.id == i.productId)
                         .firstOrNull;
-                    return p == null ? i.productId : '${p.sku} — ${p.name}';
+                    return p == null ? i.productId : '${p.sku} — ${p.displayName}';
                   },
                   subtitleOf: (i) => '${i.quantity} × ${brl(i.unitPrice)}',
                   onDelete: (i) => setState(() => _items.removeAt(i)),
@@ -577,7 +577,7 @@ class _KitSwapSectionState extends State<_KitSwapSection> {
     final target = _slotBase(line, assembly, compIndex);
     final eq = kit_swap.equivalentQuantity(target, picked.salePrice, kit_swap.qtyStep(picked.saleUom));
     if (!eq.ok) {
-      setState(() => _error = '${picked.sku} — ${picked.name}: ${eq.reason}');
+      setState(() => _error = '${picked.sku} — ${picked.displayName}: ${eq.reason}');
       return;
     }
     setState(() => _error = null);
@@ -684,7 +684,7 @@ class _KitSwapSectionState extends State<_KitSwapSection> {
               onTap: () => _swap(lineIndex, line, assembly, compIndex),
               child: InputDecorator(
                 decoration: const InputDecoration(labelText: 'Item', isDense: true),
-                child: Text(p == null ? comp.productId : '${p.sku} — ${p.name}', overflow: TextOverflow.ellipsis),
+                child: Text(p == null ? comp.productId : '${p.sku} — ${p.displayName}', overflow: TextOverflow.ellipsis),
               ),
             ),
           ),
@@ -734,7 +734,7 @@ class _ProductPickerDialogState extends State<_ProductPickerDialog> {
     final q = normalizeSearch(_query.trim());
     final shown = q.isEmpty
         ? widget.products
-        : widget.products.where((p) => normalizeSearch('${p.sku} ${p.name}').contains(q)).toList();
+        : widget.products.where((p) => normalizeSearch('${p.sku} ${p.displayName}').contains(q)).toList();
     return AlertDialog(
       title: const Text('Trocar item'),
       content: SizedBox(
@@ -758,7 +758,7 @@ class _ProductPickerDialogState extends State<_ProductPickerDialog> {
                       itemBuilder: (_, i) {
                         final p = shown[i];
                         return ListTile(
-                          title: Text(p.name),
+                          title: Text(p.displayName),
                           subtitle: Text(p.sku),
                           onTap: () => Navigator.pop(context, p),
                         );
@@ -779,10 +779,16 @@ typedef _Product = ({
   String id,
   String sku,
   String name,
+  String popularName,
   String barcode,
   String saleUom,
   double salePrice,
 });
+
+extension on _Product {
+  /// What labels/receipts print and sales screens show — popularName when set, else name.
+  String get displayName => popularName.isEmpty ? name : popularName;
+}
 
 /// Bottom sheet that collects one order line (product, quantity, price).
 class _ItemSheet extends StatefulWidget {
@@ -857,8 +863,8 @@ class _ItemSheetState extends State<_ItemSheet> {
               label: 'Produto',
               options: widget.products,
               selected: p,
-              display: (x) => '${x.sku} — ${x.name}',
-              searchText: (x) => '${x.sku} ${x.name} ${x.barcode}',
+              display: (x) => '${x.sku} — ${x.displayName}',
+              searchText: (x) => '${x.sku} ${x.name} ${x.displayName} ${x.barcode}',
               onSelected: (x) => setState(() {
                 _product = x;
                 _price.text = _fmtPrice(x.salePrice);

@@ -3,6 +3,7 @@ import '../../config/domain/entities.dart';
 class SalesOrder {
   const SalesOrder({
     required this.id,
+    this.number = 0,
     required this.customerId,
     required this.warehouseId,
     required this.paymentMethodId,
@@ -22,6 +23,7 @@ class SalesOrder {
   });
 
   final String id;
+  final int number;
   final String customerId;
   final String warehouseId;
   final String paymentMethodId;
@@ -101,7 +103,15 @@ class SalesLookups {
 
   final List<Person> customers;
   final List<
-    ({String id, String sku, String name, String barcode, String saleUom, double salePrice})
+    ({
+      String id,
+      String sku,
+      String name,
+      String popularName,
+      String barcode,
+      String saleUom,
+      double salePrice,
+    })
   >
   products;
   final List<({String id, String code, String name})> warehouses;

@@ -122,6 +122,7 @@ class SalesRepositoryImpl implements SalesRepository {
           id: id,
           sku: asString(p, 'sku'),
           name: asString(p, 'name'),
+          popularName: asString(p, 'popular_name'),
           barcode: asString(p, 'barcode'),
           saleUom: asString(p, 'sale_uom'),
           salePrice: latestSale[id] ?? asDouble(p, 'sale_price'),

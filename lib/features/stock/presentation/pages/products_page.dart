@@ -19,7 +19,7 @@ class ProductsPage extends ConsumerWidget {
       onRefresh: () => ref.read(productsProvider.notifier).reload(),
       titleOf: (p) => p.name,
       subtitleOf: (p) => '${p.sku} · ${p.kindLabel} · ${brl(p.salePrice)}',
-      searchTextOf: (p) => '${p.name} ${p.sku} ${p.barcode} ${p.kindLabel}',
+      searchTextOf: (p) => '${p.name} ${p.popularName} ${p.sku} ${p.barcode} ${p.kindLabel}',
       filters: [
         ListFilter<Product>.byValue(
           label: 'Tipo',
@@ -51,6 +51,7 @@ class ProductFormPage extends ConsumerStatefulWidget {
 class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   final _form = GlobalKey<FormState>();
   late final _name = TextEditingController(text: widget.product?.name ?? '');
+  late final _popularName = TextEditingController(text: widget.product?.popularName ?? '');
   late final _barcode = TextEditingController(text: widget.product?.barcode ?? '');
   late final _ncm = TextEditingController(text: widget.product?.ncm ?? '');
   late final _factor = TextEditingController(
@@ -67,6 +68,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   @override
   void dispose() {
     _name.dispose();
+    _popularName.dispose();
     _barcode.dispose();
     _ncm.dispose();
     _factor.dispose();
@@ -91,6 +93,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         child: Column(
           children: [
             ErpField('Nome', _name, required: true),
+            ErpField('Nome popular', _popularName),
             ErpField('Barras', _barcode, scannable: true),
             ErpField('NCM', _ncm),
             ErpDropdown<String>(
@@ -156,6 +159,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
               id: widget.product?.id ?? '',
               sku: widget.product?.sku ?? '',
               name: _name.text.trim(),
+              popularName: _popularName.text.trim(),
               barcode: _barcode.text.trim(),
               ncm: _ncm.text.trim(),
               categoryId: _categoryId,

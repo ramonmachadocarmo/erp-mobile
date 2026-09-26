@@ -16,6 +16,7 @@ class StockRepositoryImpl implements StockRepository {
         id: asString(j, 'id'),
         sku: asString(j, 'sku'),
         name: asString(j, 'name'),
+        popularName: asString(j, 'popular_name'),
         barcode: asString(j, 'barcode'),
         ncm: asString(j, 'ncm'),
         categoryId: asString(j, 'category_id'),
@@ -56,6 +57,7 @@ class StockRepositoryImpl implements StockRepository {
         final body = {
           'barcode': p.barcode,
           'name': p.name,
+          'popular_name': p.popularName,
           'category_id': p.categoryId,
           'ncm': p.ncm,
           'kind': p.kind,
@@ -140,17 +142,40 @@ class StockRepositoryImpl implements StockRepository {
       });
 
   @override
-  Future<Result<void>> setBalance({
+  Future<Result<void>> createMovement({
     required String productId,
     required String warehouseId,
+    required String direction,
+    required String subtype,
     required double quantity,
   }) =>
       guardApi(
-        () => _client.put(
-          '/api/stock/balances',
+        () => _client.post(
+          '/api/stock/movements',
           body: {
             'product_id': productId,
             'warehouse_id': warehouseId,
+            'direction': direction,
+            'subtype': subtype,
+            'quantity': quantity,
+          },
+        ),
+      );
+
+  @override
+  Future<Result<void>> transferStock({
+    required String productId,
+    required String fromWarehouseId,
+    required String toWarehouseId,
+    required double quantity,
+  }) =>
+      guardApi(
+        () => _client.post(
+          '/api/stock/movements/transfer',
+          body: {
+            'product_id': productId,
+            'from_warehouse_id': fromWarehouseId,
+            'to_warehouse_id': toWarehouseId,
             'quantity': quantity,
           },
         ),

@@ -93,16 +93,6 @@ class BalancesNotifier extends AsyncNotifier<List<Balance>> {
       () => ref.read(stockRepositoryProvider).balances().then((r) => r.getOrThrow()),
     );
   }
-
-  Future<void> setBalance(String productId, String warehouseId, double qty) async {
-    (await ref.read(stockRepositoryProvider).setBalance(
-          productId: productId,
-          warehouseId: warehouseId,
-          quantity: qty,
-        ))
-        .getOrThrow();
-    await reload();
-  }
 }
 
 final salePricesProvider =
@@ -166,5 +156,34 @@ class MovementsNotifier extends AsyncNotifier<List<StockMovement>> {
     state = await AsyncValue.guard(
       () => ref.read(stockRepositoryProvider).movements().then((r) => r.getOrThrow()),
     );
+  }
+
+  /// Lança um movimento (entrada/saída) ou transferência e recarrega kardex + saldos —
+  /// saldo não é editado direto, só via movimento, pra manter o histórico completo.
+  Future<void> launch({
+    required String productId,
+    required String direction,
+    required String subtype,
+    required String fromWarehouseId,
+    required String toWarehouseId,
+    required double quantity,
+  }) async {
+    final repo = ref.read(stockRepositoryProvider);
+    final result = direction == 'TRANSFER'
+        ? await repo.transferStock(
+            productId: productId,
+            fromWarehouseId: fromWarehouseId,
+            toWarehouseId: toWarehouseId,
+            quantity: quantity,
+          )
+        : await repo.createMovement(
+            productId: productId,
+            warehouseId: fromWarehouseId,
+            direction: direction,
+            subtype: subtype,
+            quantity: quantity,
+          );
+    result.getOrThrow();
+    await Future.wait([reload(), ref.read(balancesProvider.notifier).reload()]);
   }
 }

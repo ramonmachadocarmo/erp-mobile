@@ -12,9 +12,18 @@ abstract class StockRepository {
   Future<Result<List<Warehouse>>> warehouses();
   Future<Result<Warehouse>> saveWarehouse(Warehouse warehouse);
   Future<Result<List<Balance>>> balances();
-  Future<Result<void>> setBalance({
+  /// Movimento manual (kardex): [direction] IN/OUT, [subtype] PURCHASE (IN) ou SALE/LOSS (OUT).
+  Future<Result<void>> createMovement({
     required String productId,
     required String warehouseId,
+    required String direction,
+    required String subtype,
+    required double quantity,
+  });
+  Future<Result<void>> transferStock({
+    required String productId,
+    required String fromWarehouseId,
+    required String toWarehouseId,
     required double quantity,
   });
   Future<Result<List<SalePrice>>> salePrices();

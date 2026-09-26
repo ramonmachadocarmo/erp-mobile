@@ -26,6 +26,9 @@ class ReportsRepositoryImpl {
   Future<Result<ReportRows>> customerRanking({String? from, String? to}) =>
       guardApi(() => _client.getList('$_base/customer-ranking${_range(from, to)}'));
 
+  Future<Result<Map<String, dynamic>>> customerDetail(String customerId) =>
+      guardApi(() => _client.get('$_base/customer-ranking/$customerId'));
+
   Future<Result<ReportRows>> forecast({
     required int coverageWeeks,
     required double safetyPercent,

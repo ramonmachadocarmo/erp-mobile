@@ -6,6 +6,7 @@ import '../../../../app/widgets/list_filters.dart';
 import '../../../../app/widgets/form_kit.dart';
 import '../../domain/entities.dart';
 import '../stock_providers.dart';
+import 'movement_form.dart';
 
 class BalancesPage extends ConsumerWidget {
   const BalancesPage({super.key});
@@ -37,84 +38,10 @@ class BalancesPage extends ConsumerWidget {
         final extra = um2.isEmpty ? '' : ' · $um2';
         return '${warehouses[b.warehouseId]?.name ?? b.warehouseId} · $um$extra · disp. ${b.available} · res. ${b.reserved}';
       },
-      onCreate: () => pushForm(context, const _BalanceForm()),
-      onEdit: (b) => pushForm(context, _BalanceForm(balance: b)),
+      // Saldo não é editado direto — só via movimento (kardex), igual à web.
+      onCreate: () => pushForm(context, const MovementForm()),
+      onEdit: (b) => pushForm(context, MovementForm(productId: b.productId, warehouseId: b.warehouseId)),
     );
-  }
-}
-
-class _BalanceForm extends ConsumerStatefulWidget {
-  const _BalanceForm({this.balance});
-
-  final Balance? balance;
-
-  @override
-  ConsumerState<_BalanceForm> createState() => _BalanceFormState();
-}
-
-class _BalanceFormState extends ConsumerState<_BalanceForm> {
-  final _form = GlobalKey<FormState>();
-  late var _productId = widget.balance?.productId ?? '';
-  late var _warehouseId = widget.balance?.warehouseId ?? '';
-  late final _qty = TextEditingController(text: '${widget.balance?.available ?? 0}');
-  var _saving = false;
-
-  @override
-  void dispose() {
-    _qty.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final products = ref.watch(productsProvider).valueOrNull ?? [];
-    final warehouses = ref.watch(warehousesProvider).valueOrNull ?? [];
-    return Form(
-      key: _form,
-      child: FormScaffold(
-        title: 'Definir saldo',
-        saving: _saving,
-        onSave: _save,
-        child: Column(
-          children: [
-            ErpDropdown<String>(
-              label: 'Produto',
-              value: _productId.isEmpty ? null : _productId,
-              items: products
-                  .map((p) => DropdownMenuItem(value: p.id, child: Text('${p.sku} — ${p.name}')))
-                  .toList(),
-              onChanged: (v) => setState(() => _productId = v ?? ''),
-            ),
-            ErpDropdown<String>(
-              label: 'Almoxarifado',
-              value: _warehouseId.isEmpty ? null : _warehouseId,
-              items: warehouses
-                  .map((w) => DropdownMenuItem(value: w.id, child: Text('${w.code} — ${w.name}')))
-                  .toList(),
-              onChanged: (v) => setState(() => _warehouseId = v ?? ''),
-            ),
-            ErpField('Quantidade disponível', _qty, keyboard: TextInputType.number, required: true),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _save() async {
-    if (!(_form.currentState?.validate() ?? false)) return;
-    setState(() => _saving = true);
-    try {
-      await ref.read(balancesProvider.notifier).setBalance(
-            _productId,
-            _warehouseId,
-            double.tryParse(_qty.text.replaceAll(',', '.')) ?? 0,
-          );
-      if (mounted) Navigator.of(context).pop();
-    } catch (e) {
-      if (mounted) showError(context, '$e');
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
   }
 }
 

@@ -6,9 +6,9 @@ import '../../../../app/widgets/form_kit.dart';
 import '../../../../app/widgets/list_filters.dart';
 import '../../domain/entities.dart';
 import '../stock_providers.dart';
+import 'movement_form.dart';
 
-/// Kardex — só leitura por enquanto (criar movimento manual ou transferência entre
-/// almoxarifados continua só na web; ver docs/MOBILE_PARITY_PLAN.md).
+/// Kardex — lista + lançamento de movimento manual (entrada/saída) ou transferência.
 class MovementsPage extends ConsumerWidget {
   const MovementsPage({super.key});
 
@@ -30,6 +30,7 @@ class MovementsPage extends ConsumerWidget {
     return CrudList<StockMovement>(
       value: items,
       onRefresh: () => ref.read(movementsProvider.notifier).reload(),
+      onCreate: () => pushForm(context, const MovementForm()),
       titleOf: (m) => productLabel(m.productId),
       subtitleOf: (m) =>
           '${m.typeLabel} · ${_fmtQty(m.quantity)} · ${warehouseLabel(m.warehouseId)}\n${fmtDt(m.createdAt)} · ${m.originLabel}',

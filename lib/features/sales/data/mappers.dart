@@ -24,6 +24,7 @@ SalesOrder orderFrom(Map<String, dynamic> j) {
   }
   return SalesOrder(
     id: asString(j, 'id'),
+    number: asInt(j, 'number'),
     customerId: asString(j, 'customer_id'),
     warehouseId: asString(j, 'warehouse_id'),
     paymentMethodId: asString(j, 'payment_method_id'),

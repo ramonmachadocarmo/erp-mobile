@@ -118,7 +118,16 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/relatorios/vendas', builder: (_, _) => const SalesReportPage()),
           GoRoute(path: '/relatorios/compras', builder: (_, _) => const PurchasesReportPage()),
           GoRoute(path: '/relatorios/previsao', builder: (_, _) => const ForecastReportPage()),
-          GoRoute(path: '/crm', builder: (_, _) => const CrmCustomersPage()),
+          GoRoute(
+            path: '/crm',
+            builder: (_, _) => const CrmCustomersPage(),
+            routes: [
+              GoRoute(
+                path: ':id',
+                builder: (_, state) => CrmCustomerDetailPage(customerId: state.pathParameters['id']!),
+              ),
+            ],
+          ),
           GoRoute(path: '/bi', redirect: (_, _) => '/bi/previsao'),
           GoRoute(path: '/config/unidades', builder: (_, _) => const UnitsPage()),
           GoRoute(path: '/config/pagamento', builder: (_, _) => const PaymentPage()),

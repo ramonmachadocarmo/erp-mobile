@@ -3,6 +3,7 @@ class Product {
     required this.id,
     required this.sku,
     required this.name,
+    this.popularName = '',
     this.barcode = '',
     this.ncm = '',
     this.categoryId = '',
@@ -20,6 +21,7 @@ class Product {
   final String id;
   final String sku;
   final String name;
+  final String popularName;
   final String barcode;
   final String ncm;
   final String categoryId;
@@ -38,6 +40,9 @@ class Product {
     if (kind == 'FIXED_ASSET') return 'Ativo fixo';
     return 'Final';
   }
+
+  /// What labels/receipts print and sales screens show — popularName when set, else name.
+  String get displayName => popularName.isEmpty ? name : popularName;
 }
 
 class UomConversion {
