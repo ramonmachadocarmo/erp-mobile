@@ -23,6 +23,9 @@ class ReportsRepositoryImpl {
   Future<Result<ReportRows>> purchases({String? from, String? to}) =>
       guardApi(() => _client.getList('$_base/purchases${_range(from, to)}'));
 
+  Future<Result<ReportRows>> customerRanking({String? from, String? to}) =>
+      guardApi(() => _client.getList('$_base/customer-ranking${_range(from, to)}'));
+
   Future<Result<ReportRows>> forecast({
     required int coverageWeeks,
     required double safetyPercent,

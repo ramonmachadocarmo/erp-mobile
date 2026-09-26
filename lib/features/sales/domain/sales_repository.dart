@@ -7,6 +7,7 @@ abstract class SalesRepository {
   Future<Result<SalesOrder>> getOrder(String id);
   Future<Result<void>> createOrder(SalesOrder order);
   Future<Result<void>> cancelOrder(String id);
+  Future<Result<void>> deleteOrder(String id);
   Future<Result<SalesOrder>> scanPick(String id, {required String productId, required String warehouseId, double quantity});
   Future<Result<SalesOrder>> completePicking(String id, {required int volumeCount});
   Future<Result<void>> undoPicking(String id);

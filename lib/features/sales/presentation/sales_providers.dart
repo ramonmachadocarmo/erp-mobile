@@ -34,6 +34,11 @@ class SalesOrdersNotifier extends AsyncNotifier<List<SalesOrder>> {
     await reload();
   }
 
+  Future<void> delete(String id) async {
+    (await ref.read(salesRepositoryProvider).deleteOrder(id)).getOrThrow();
+    await reload();
+  }
+
   Future<void> undoPicking(String id) async {
     (await ref.read(salesRepositoryProvider).undoPicking(id)).getOrThrow();
     await reload();

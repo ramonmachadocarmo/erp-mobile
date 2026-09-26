@@ -105,6 +105,12 @@ const navGroups = [
     ],
   ),
   NavGroup(
+    title: 'CRM',
+    items: [
+      NavItem(path: '/crm', label: 'Clientes'),
+    ],
+  ),
+  NavGroup(
     title: 'Configurador',
     items: [
       NavItem(path: '/config/unidades', label: 'Unidades', menuKey: '/config/cadastros/unidades'),
@@ -181,6 +187,9 @@ const menuCatalog = <NavGroup>[
     NavItem(path: '/relatorios/vendas', label: 'Pedidos de venda'),
     NavItem(path: '/relatorios/compras', label: 'Pedidos de compra'),
     NavItem(path: '/relatorios/previsao', label: 'Previsão'),
+  ]),
+  NavGroup(title: 'CRM', items: [
+    NavItem(path: '/crm', label: 'Clientes'),
   ]),
   NavGroup(title: 'Configurador', items: [
     NavItem(path: '/config/regras', label: 'Regras'),

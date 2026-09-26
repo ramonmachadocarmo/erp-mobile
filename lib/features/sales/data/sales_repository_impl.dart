@@ -49,6 +49,10 @@ class SalesRepositoryImpl implements SalesRepository {
       guardApi(() => _client.post('/api/sales/sales-orders/$id/cancel'));
 
   @override
+  Future<Result<void>> deleteOrder(String id) =>
+      guardApi(() => _client.delete('/api/sales/sales-orders/$id'));
+
+  @override
   Future<Result<SalesOrder>> scanPick(
     String id, {
     required String productId,

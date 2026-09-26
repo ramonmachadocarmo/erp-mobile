@@ -228,14 +228,34 @@ class SalesOrdersPage extends ConsumerWidget {
           const PopupMenuItem(value: 'pick', child: Text('Separar')),
         if (o.status == 'PICKING' || o.status == 'PICKED')
           const PopupMenuItem(value: 'undo', child: Text('Desfazer')),
+        // Igual ao web (Orders.tsx): sempre oferecido, o backend que recusa se ja faturado
+        // (INVOICED) — exclui de vez, ao contrario de "Cancelar" que mantem o registro.
+        if (o.status != 'INVOICED')
+          const PopupMenuItem(value: 'delete', child: Text('Excluir')),
       ],
-      onAction: (o, action) {
+      onAction: (o, action) async {
         if (action == 'cancel') {
           ref.read(salesOrdersProvider.notifier).cancel(o.id);
         }
         if (action == 'pick') context.push('/logistica/separacao/${o.id}');
         if (action == 'undo') {
           ref.read(salesOrdersProvider.notifier).undoPicking(o.id);
+        }
+        if (action == 'delete') {
+          final ok = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Excluir pedido'),
+              content: const Text('Esta ação não pode ser desfeita. Continuar?'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Excluir')),
+              ],
+            ),
+          );
+          if (ok == true && context.mounted) {
+            ref.read(salesOrdersProvider.notifier).delete(o.id);
+          }
         }
       },
     );

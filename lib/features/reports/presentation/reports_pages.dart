@@ -32,6 +32,10 @@ final purchasesReportProvider = FutureProvider.autoDispose.family<ReportRows, Da
   (ref, r) => ref.read(reportsRepositoryProvider).purchases(from: r.from, to: r.to).then((x) => x.getOrThrow()),
 );
 
+final customerRankingReportProvider = FutureProvider.autoDispose.family<ReportRows, DateRange>(
+  (ref, r) => ref.read(reportsRepositoryProvider).customerRanking(from: r.from, to: r.to).then((x) => x.getOrThrow()),
+);
+
 final forecastReportProvider =
     FutureProvider.autoDispose.family<ReportRows, ({int coverageWeeks, double safetyPercent, int lookbackWeeks})>(
   (ref, p) => ref
@@ -217,6 +221,91 @@ class PurchasesReportPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _OrdersReport(provider: purchasesReportProvider, partyKey: 'supplier_name');
+}
+
+// ------------------------------------------------------------------- CRM
+
+class CrmCustomersPage extends ConsumerStatefulWidget {
+  const CrmCustomersPage({super.key});
+
+  @override
+  ConsumerState<CrmCustomersPage> createState() => _CrmCustomersPageState();
+}
+
+class _CrmCustomersPageState extends ConsumerState<CrmCustomersPage> {
+  String _from = '';
+  String _to = '';
+
+  DateRange get _range => (from: _from, to: _to);
+
+  String _iso(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _pick(bool isFrom) async {
+    final current = DateTime.tryParse(isFrom ? _from : _to) ?? DateTime.now();
+    final d = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (d == null) return;
+    setState(() => isFrom ? _from = _iso(d) : _to = _iso(d));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value = ref.watch(customerRankingReportProvider(_range));
+    final rows = value.valueOrNull ?? const <Map<String, dynamic>>[];
+    final orders = rows.fold<double>(0, (n, r) => n + asDouble(r, 'order_count'));
+    final spent = rows.fold<double>(0, (n, r) => n + asDouble(r, 'total_amount'));
+    final cancelled = rows.fold<double>(0, (n, r) => n + asDouble(r, 'cancelled_count'));
+    return Column(
+      children: [
+        ParamsCard(
+          fields: const [],
+          actions: [
+            OutlinedButton.icon(
+              onPressed: () => _pick(true),
+              icon: const Icon(Icons.event, size: 18),
+              label: Text(_from.isEmpty ? 'De' : 'De $_from'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _pick(false),
+              icon: const Icon(Icons.event, size: 18),
+              label: Text(_to.isEmpty ? 'Até' : 'Até $_to'),
+            ),
+            if (_from.isNotEmpty || _to.isNotEmpty)
+              TextButton(onPressed: () => setState(() => _from = _to = ''), child: const Text('Limpar')),
+          ],
+        ),
+        if (value.hasValue)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                StatCard(label: 'Clientes', value: '${rows.length}'),
+                StatCard(label: 'Pedidos', value: fmtQty(orders)),
+                StatCard(label: 'Valor gasto', value: brl(spent)),
+                StatCard(label: 'Pedidos cancelados', value: fmtQty(cancelled)),
+              ],
+            ),
+          ),
+        Expanded(
+          child: CrudList<Map<String, dynamic>>(
+            value: value,
+            onRefresh: () async => ref.invalidate(customerRankingReportProvider(_range)),
+            isThreeLine: true,
+            titleOf: (r) => asString(r, 'customer_name'),
+            subtitleOf: (r) =>
+                'Pedidos ${fmtQty(asDouble(r, 'order_count'))} · Total ${brl(asDouble(r, 'total_amount'))} · Ticket médio ${brl(asDouble(r, 'average_ticket'))}\n'
+                'Cancelados: ${fmtQty(asDouble(r, 'cancelled_count'))}',
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ---------------------------------------------------------------- Previsão
